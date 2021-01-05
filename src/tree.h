@@ -42,6 +42,9 @@ template <typename T, typename Compare = std::less<T>> class bst
 
     void base_insert(node_base* node);
 
+    void transplant(node_base* u, node_base* v);
+    void base_erase(node_base* node);
+
   public:
     using value_type     = T;
     using value_compare  = Compare;
@@ -55,6 +58,8 @@ template <typename T, typename Compare = std::less<T>> class bst
 
     virtual iterator insert(const_iterator pos, const T& data);
     virtual iterator insert(const T& data);
+
+    virtual iterator erase(const_iterator pos);
 
     iterator find(const T& data);
     const_iterator find(const T& data) const;
@@ -105,6 +110,8 @@ class bst<T, Compare>::node_base_iterator_base
 
   private:
     node_base* node;
+
+    friend class bst;
 };
 
 template <typename T, typename Compare>
@@ -347,6 +354,41 @@ void bst<T, Compare>::base_insert(node_base* node)
 }
 
 template <typename T, typename Compare>
+void bst<T, Compare>::transplant(node_base* u, node_base* v)
+{
+    if (!u->parent)
+        root_ = v;
+    else if (u == u->parent->left)
+        u->parent->left = v;
+    else
+        u->parent->right = v;
+    if (v)
+        v->parent = u->parent;
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::base_erase(node_base* node)
+{
+    if (!node->left)
+        transplant(node, node->right);
+    else if (!node->right)
+        transplant(node, node->left);
+    else {
+        node_base* min = subtree_min(node->right);
+        if (min->parent != node) {
+            transplant(min, min->right);
+            min->right = node->right;
+            min->right->parent = min;
+        }
+        transplant(node, min);
+        min->left = node->left;
+        min->left->parent = min;
+    }
+
+    delete node;
+}
+
+template <typename T, typename Compare>
 bst<T, Compare>::bst(const bst& source) : root_(new node_base(*source.root))
 {
 }
@@ -376,6 +418,16 @@ typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
     node_base* node = new node_base{data};
     base_insert(node);
     return iterator{node};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::iterator bst<T, Compare>::erase(const_iterator pos)
+{
+    node_base* node = pos.node;
+    iterator next(node);
+    ++next;
+    base_erase(node);
+    return next;
 }
 
 template <typename T, typename Compare>
