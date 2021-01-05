@@ -29,6 +29,8 @@ template <typename T, typename Compare = std::less<T>> class bst
     template <typename Visitor>
     static void postorder_visit(node_base* node, Visitor visit);
 
+    static node_base* subtree_find(node_base* node, const T& data);
+
     static node_base* subtree_min(node_base* node);
     static node_base* subtree_max(node_base* node);
 
@@ -42,6 +44,7 @@ template <typename T, typename Compare = std::less<T>> class bst
 
   public:
     using value_type     = T;
+    using value_compare  = Compare;
     using iterator       = node_base_iterator;
     using const_iterator = const_node_base_iterator;
 
@@ -52,6 +55,9 @@ template <typename T, typename Compare = std::less<T>> class bst
 
     virtual iterator insert(const_iterator pos, const T& data);
     virtual iterator insert(const T& data);
+
+    iterator find(const T& data);
+    const_iterator find(const T& data) const;
 
     iterator begin();
     const_iterator begin() const;
@@ -222,6 +228,23 @@ void bst<T, Compare>::postorder_visit(node_base* node, Visitor visit)
 
 template <typename T, typename Compare>
 typename bst<T, Compare>::node_base*
+bst<T, Compare>::subtree_find(node_base* node, const T& data)
+{
+    auto not_equals = [](const T& a, const T& b) -> bool {
+        return value_compare{}(a, b) || value_compare{}(b, a);
+    };
+
+    while (node && not_equals(data, node->data)) {
+        if (value_compare{}(data, node->data))
+            node = node->left;
+        else
+            node = node->right;
+    }
+    return node;
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::node_base*
 bst<T, Compare>::subtree_min(node_base* node)
 {
     while (node->left)
@@ -260,7 +283,7 @@ bst<T, Compare>::subtree_pred(node_base* node)
         return subtree_max(node->left);
     node_base* parent = node->parent;
     while (parent && node == parent->left) {
-        node = parent;
+        node   = parent;
         parent = parent->parent;
     }
     return parent;
@@ -335,9 +358,7 @@ bst<T, Compare>::bst(bst&& source) : root_(std::move(source.root))
 
 template <typename T, typename Compare> bst<T, Compare>::~bst()
 {
-    auto destroy = [](node_base* node) {
-        delete node;
-    };
+    auto destroy = [](node_base* node) { delete node; };
 
     postorder_visit(root_, destroy);
 }
@@ -355,6 +376,21 @@ typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
     node_base* node = new node_base{data};
     base_insert(node);
     return iterator{node};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::iterator bst<T, Compare>::find(const T& data)
+{
+    node_base* node = subtree_find(root_, data);
+    return iterator{node};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator
+bst<T, Compare>::find(const T& data) const
+{
+    node_base* node = subtree_find(root_, data);
+    return const_iterator{node};
 }
 
 template <typename T, typename Compare>
@@ -407,7 +443,7 @@ bst<T, Compare>::node_base::node_base(const node_base& source)
 template <typename T, typename Compare>
 bool bst<T, Compare>::node_base::operator<(const node_base& rhs) const
 {
-    return Compare{}(data, rhs.data);
+    return value_compare{}(data, rhs.data);
 }
 
 template <typename T, typename Compare>

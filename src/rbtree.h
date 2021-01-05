@@ -39,8 +39,8 @@ class rb_tree : public bst<T, Compare>
     rb_tree(const rb_tree& source);
     rb_tree(rb_tree&& source);
 
-    virtual iterator insert(const_iterator pos, const T& data);
-    virtual iterator insert(const T& data);
+    virtual iterator insert(const_iterator pos, const T& data) override;
+    virtual iterator insert(const T& data) override;
 };
 
 template <typename T, typename Compare>
