@@ -4,7 +4,6 @@
 #include "tree.h"
 
 #include <functional>
-#include <type_traits>
 
 #ifndef _P_UNUSED_
 #define _P_UNUSED_ __attribute__((unsed))
@@ -106,7 +105,8 @@ void rb_tree<T, Compare>::fixup_insert(bst_node* node)
 
         if (parent(node) == grand_parent(node)->left) {
             case_2 = node == parent(node)->right;
-            std::swap(rotate_2, rotate_3);
+            rotate_2 = &rb_tree::left_rotate;
+            rotate_3 = &rb_tree::right_rotate;
         }
 
         if (color(uncle(node)) == red) {

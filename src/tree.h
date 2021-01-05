@@ -23,7 +23,11 @@ template <typename T, typename Compare = std::less<T>> class bst
     node_base* root();
 
     template <typename Visitor>
-    static void post_order_visit(node_base* node, Visitor visit);
+    static void preorder_visit(node_base* node, Visitor visit);
+    template <typename Visitor>
+    static void inorder_visit(node_base* node, Visitor visit);
+    template <typename Visitor>
+    static void postorder_visit(node_base* node, Visitor visit);
 
     static node_base* subtree_min(node_base* node);
     static node_base* subtree_max(node_base* node);
@@ -48,6 +52,14 @@ template <typename T, typename Compare = std::less<T>> class bst
 
     virtual iterator insert(const_iterator pos, const T& data);
     virtual iterator insert(const T& data);
+
+    iterator begin();
+    const_iterator begin() const;
+    const_iterator cbegin() const;
+
+    iterator end();
+    const_iterator end() const;
+    const_iterator cend() const;
 
   private:
     node_base* root_ = nullptr;
@@ -148,7 +160,40 @@ typename bst<T, Compare>::node_base* bst<T, Compare>::root()
 
 template <typename T, typename Compare>
 template <typename Visitor>
-void bst<T, Compare>::post_order_visit(node_base* node, Visitor visit)
+void bst<T, Compare>::preorder_visit(node_base* node, Visitor visit)
+{
+    std::stack<node_base*> traversal;
+
+    if (node)
+        traversal.push(node);
+
+    while (!traversal.empty()) {
+        node_base* cursor = traversal.top();
+        traversal.pop();
+
+        visit(cursor);
+
+        if (cursor->right)
+            traversal.push(node->right);
+        if (cursor->left)
+            traversal.push(node->left);
+    }
+}
+
+template <typename T, typename Compare>
+template <typename Visitor>
+void bst<T, Compare>::inorder_visit(node_base* node, Visitor visit)
+{
+    node_base* cursor = subtree_min(node);
+    while (cursor) {
+        visit(cursor);
+        cursor = subtree_succ(cursor);
+    }
+}
+
+template <typename T, typename Compare>
+template <typename Visitor>
+void bst<T, Compare>::postorder_visit(node_base* node, Visitor visit)
 {
     std::stack<node_base*> iterating;
     std::stack<node_base*> traversal;
@@ -162,11 +207,11 @@ void bst<T, Compare>::post_order_visit(node_base* node, Visitor visit)
 
         traversal.push(cursor);
 
-        if (cursor->left)
-            iterating.push(cursor->left);
-
         if (cursor->right)
             iterating.push(cursor->right);
+
+        if (cursor->left)
+            iterating.push(cursor->left);
     }
 
     while (!traversal.empty()) {
@@ -294,7 +339,7 @@ template <typename T, typename Compare> bst<T, Compare>::~bst()
         delete node;
     };
 
-    post_order_visit(root_, destroy);
+    postorder_visit(root_, destroy);
 }
 
 template <typename T, typename Compare>
@@ -310,6 +355,42 @@ typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
     node_base* node = new node_base{data};
     base_insert(node);
     return iterator{node};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::iterator bst<T, Compare>::begin()
+{
+    return iterator{subtree_min(root_)};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator bst<T, Compare>::begin() const
+{
+    return const_iterator{subtree_min(root_)};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator bst<T, Compare>::cbegin() const
+{
+    return const_iterator{subtree_min(root_)};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::iterator bst<T, Compare>::end()
+{
+    return iterator{nullptr};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator bst<T, Compare>::end() const
+{
+    return const_iterator{nullptr};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator bst<T, Compare>::cend() const
+{
+    return const_iterator{nullptr};
 }
 
 template <typename T, typename Compare>
