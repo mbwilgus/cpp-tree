@@ -14,50 +14,59 @@
 template <typename T, typename Compare = std::less<T>> class bst
 {
   protected:
-    struct node_base;
+    struct bst_node;
 
-    class node_base_iterator_base;
-    class node_base_iterator;
-    class const_node_base_iterator;
+    class bst_node_iterator_base;
+    class bst_node_iterator;
+    class const_bst_node_iterator;
 
-    node_base* root();
+    bst_node* root();
 
     template <typename Visitor>
-    static void preorder_visit(node_base* node, Visitor visit);
+    static void preorder_visit(bst_node* node, Visitor visit);
     template <typename Visitor>
-    static void inorder_visit(node_base* node, Visitor visit);
+    static void inorder_visit(bst_node* node, Visitor visit);
     template <typename Visitor>
-    static void postorder_visit(node_base* node, Visitor visit);
+    static void postorder_visit(bst_node* node, Visitor visit);
 
-    static node_base* subtree_find(node_base* node, const T& data);
+    static bst_node* subtree_find(bst_node* node, const T& data);
 
-    static node_base* subtree_min(node_base* node);
-    static node_base* subtree_max(node_base* node);
+    static bst_node* subtree_min(bst_node* node);
+    static bst_node* subtree_max(bst_node* node);
 
-    static node_base* subtree_succ(node_base* node);
-    static node_base* subtree_pred(node_base* node);
+    static bst_node* subtree_succ(bst_node* node);
+    static bst_node* subtree_pred(bst_node* node);
 
-    void left_rotate(node_base* node);
-    void right_rotate(node_base* node);
+    void left_rotate(bst_node* node);
+    void right_rotate(bst_node* node);
 
-    void base_insert(node_base* node);
+    virtual bst_node* make_node(const T& data);
 
-    void transplant(node_base* u, node_base* v);
-    void base_erase(node_base* node);
+    virtual void base_insert(bst_node* node);
+
+    void transplant(bst_node* u, bst_node* v);
+    inline virtual bst_node* erase_case_no_left(bst_node* node);
+    inline virtual bst_node* erase_case_no_right(bst_node* node);
+    inline virtual void erase_case_parent_of_successor(bst_node* temp,
+                                                       bst_node* successor);
+    inline virtual void erase_case_not_parent(bst_node* node,
+                                              bst_node* successor);
+    inline virtual bst_node* erase_case_two_child(bst_node* node);
+    virtual void base_erase(bst_node* node);
 
   public:
     using value_type     = T;
     using value_compare  = Compare;
-    using iterator       = node_base_iterator;
-    using const_iterator = const_node_base_iterator;
+    using iterator       = bst_node_iterator;
+    using const_iterator = const_bst_node_iterator;
 
     bst() = default;
     bst(const bst& source);
     bst(bst&& source);
-    ~bst();
+    virtual ~bst();
 
-    virtual iterator insert(const_iterator pos, const T& data);
-    virtual iterator insert(const T& data);
+    iterator insert(const_iterator pos, const T& data);
+    iterator insert(const T& data);
 
     virtual iterator erase(const_iterator pos);
 
@@ -73,32 +82,32 @@ template <typename T, typename Compare = std::less<T>> class bst
     const_iterator cend() const;
 
   private:
-    node_base* root_ = nullptr;
+    bst_node* root_ = nullptr;
 };
 
-template <typename T, typename Compare> struct bst<T, Compare>::node_base {
+template <typename T, typename Compare> struct bst<T, Compare>::bst_node {
     T data;
-    node_base* parent = nullptr;
-    node_base* left   = nullptr;
-    node_base* right  = nullptr;
+    bst_node* parent = nullptr;
+    bst_node* left   = nullptr;
+    bst_node* right  = nullptr;
 
-    node_base() = default;
-    node_base(const T& data);
-    node_base(const node_base& source);
+    bst_node() = default;
+    bst_node(const T& data);
+    bst_node(const bst_node& source);
 
-    bool operator<(const node_base& rhs) const;
+    bool operator<(const bst_node& rhs) const;
 };
 
 template <typename T, typename Compare>
-class bst<T, Compare>::node_base_iterator_base
+class bst<T, Compare>::bst_node_iterator_base
 {
   public:
     using iterator_category = std::forward_iterator_tag;
     using value_type        = typename bst<T, Compare>::value_type;
     using difference_type   = std::size_t;
 
-    node_base_iterator_base(node_base* node);
-    node_base_iterator_base(const node_base_iterator_base& source);
+    bst_node_iterator_base(bst_node* node);
+    bst_node_iterator_base(const bst_node_iterator_base& source);
 
     value_type& value();
     const value_type& value() const;
@@ -106,82 +115,82 @@ class bst<T, Compare>::node_base_iterator_base
     const value_type* ptr() const;
 
     void increment();
-    bool equals(const node_base_iterator_base& rhs) const;
+    bool equals(const bst_node_iterator_base& rhs) const;
 
   private:
-    node_base* node;
+    bst_node* node;
 
     friend class bst;
 };
 
 template <typename T, typename Compare>
-class bst<T, Compare>::node_base_iterator : public node_base_iterator_base
+class bst<T, Compare>::bst_node_iterator : public bst_node_iterator_base
 {
   public:
     using iterator_category =
-        typename node_base_iterator_base::iterator_category;
-    using value_type      = typename node_base_iterator_base::value_type;
-    using difference_type = typename node_base_iterator_base::difference_type;
+        typename bst_node_iterator_base::iterator_category;
+    using value_type      = typename bst_node_iterator_base::value_type;
+    using difference_type = typename bst_node_iterator_base::difference_type;
 
     using reference = value_type&;
     using pointer   = value_type*;
 
-    node_base_iterator(node_base* node);
-    node_base_iterator(const node_base_iterator& source);
+    bst_node_iterator(bst_node* node);
+    bst_node_iterator(const bst_node_iterator& source);
 
     reference operator*();
     pointer operator->();
 
-    node_base_iterator& operator++();
-    node_base_iterator operator++(int);
+    bst_node_iterator& operator++();
+    bst_node_iterator operator++(int);
 
-    bool operator==(const node_base_iterator& rhs) const;
-    bool operator!=(const node_base_iterator& rhs) const;
+    bool operator==(const bst_node_iterator& rhs) const;
+    bool operator!=(const bst_node_iterator& rhs) const;
 };
 
 template <typename T, typename Compare>
-class bst<T, Compare>::const_node_base_iterator : public node_base_iterator_base
+class bst<T, Compare>::const_bst_node_iterator : public bst_node_iterator_base
 {
   public:
     using iterator_category =
-        typename node_base_iterator_base::iterator_category;
-    using value_type      = const typename node_base_iterator_base::value_type;
-    using difference_type = typename node_base_iterator_base::difference_type;
+        typename bst_node_iterator_base::iterator_category;
+    using value_type      = const typename bst_node_iterator_base::value_type;
+    using difference_type = typename bst_node_iterator_base::difference_type;
 
     using reference = value_type&;
     using pointer   = value_type*;
 
-    const_node_base_iterator(node_base* node);
-    const_node_base_iterator(const const_node_base_iterator& source);
-    const_node_base_iterator(const node_base_iterator& source);
+    const_bst_node_iterator(bst_node* node);
+    const_bst_node_iterator(const const_bst_node_iterator& source);
+    const_bst_node_iterator(const bst_node_iterator& source);
 
     reference operator*();
     pointer operator->();
 
-    const_node_base_iterator& operator++();
-    const_node_base_iterator operator++(int);
+    const_bst_node_iterator& operator++();
+    const_bst_node_iterator operator++(int);
 
-    bool operator==(const const_node_base_iterator& rhs) const;
-    bool operator!=(const const_node_base_iterator& rhs) const;
+    bool operator==(const const_bst_node_iterator& rhs) const;
+    bool operator!=(const const_bst_node_iterator& rhs) const;
 };
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base* bst<T, Compare>::root()
+typename bst<T, Compare>::bst_node* bst<T, Compare>::root()
 {
     return root_;
 }
 
 template <typename T, typename Compare>
 template <typename Visitor>
-void bst<T, Compare>::preorder_visit(node_base* node, Visitor visit)
+void bst<T, Compare>::preorder_visit(bst_node* node, Visitor visit)
 {
-    std::stack<node_base*> traversal;
+    std::stack<bst_node*> traversal;
 
     if (node)
         traversal.push(node);
 
     while (!traversal.empty()) {
-        node_base* cursor = traversal.top();
+        bst_node* cursor = traversal.top();
         traversal.pop();
 
         visit(cursor);
@@ -195,9 +204,9 @@ void bst<T, Compare>::preorder_visit(node_base* node, Visitor visit)
 
 template <typename T, typename Compare>
 template <typename Visitor>
-void bst<T, Compare>::inorder_visit(node_base* node, Visitor visit)
+void bst<T, Compare>::inorder_visit(bst_node* node, Visitor visit)
 {
-    node_base* cursor = subtree_min(node);
+    bst_node* cursor = subtree_min(node);
     while (cursor) {
         visit(cursor);
         cursor = subtree_succ(cursor);
@@ -206,16 +215,16 @@ void bst<T, Compare>::inorder_visit(node_base* node, Visitor visit)
 
 template <typename T, typename Compare>
 template <typename Visitor>
-void bst<T, Compare>::postorder_visit(node_base* node, Visitor visit)
+void bst<T, Compare>::postorder_visit(bst_node* node, Visitor visit)
 {
-    std::stack<node_base*> iterating;
-    std::stack<node_base*> traversal;
+    std::stack<bst_node*> iterating;
+    std::stack<bst_node*> traversal;
 
     if (node)
         iterating.push(node);
 
     while (!iterating.empty()) {
-        node_base* cursor = iterating.top();
+        bst_node* cursor = iterating.top();
         iterating.pop();
 
         traversal.push(cursor);
@@ -234,8 +243,8 @@ void bst<T, Compare>::postorder_visit(node_base* node, Visitor visit)
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base*
-bst<T, Compare>::subtree_find(node_base* node, const T& data)
+typename bst<T, Compare>::bst_node*
+bst<T, Compare>::subtree_find(bst_node* node, const T& data)
 {
     auto not_equals = [](const T& a, const T& b) -> bool {
         return value_compare{}(a, b) || value_compare{}(b, a);
@@ -251,8 +260,7 @@ bst<T, Compare>::subtree_find(node_base* node, const T& data)
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base*
-bst<T, Compare>::subtree_min(node_base* node)
+typename bst<T, Compare>::bst_node* bst<T, Compare>::subtree_min(bst_node* node)
 {
     while (node->left)
         node = node->left;
@@ -260,8 +268,7 @@ bst<T, Compare>::subtree_min(node_base* node)
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base*
-bst<T, Compare>::subtree_max(node_base* node)
+typename bst<T, Compare>::bst_node* bst<T, Compare>::subtree_max(bst_node* node)
 {
     while (node->right)
         node = node->right;
@@ -269,12 +276,12 @@ bst<T, Compare>::subtree_max(node_base* node)
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base*
-bst<T, Compare>::subtree_succ(node_base* node)
+typename bst<T, Compare>::bst_node*
+bst<T, Compare>::subtree_succ(bst_node* node)
 {
     if (node->right)
         return subtree_min(node->right);
-    node_base* parent = node->parent;
+    bst_node* parent = node->parent;
     while (parent && node == parent->right) {
         node   = parent;
         parent = parent->parent;
@@ -283,12 +290,12 @@ bst<T, Compare>::subtree_succ(node_base* node)
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base*
-bst<T, Compare>::subtree_pred(node_base* node)
+typename bst<T, Compare>::bst_node*
+bst<T, Compare>::subtree_pred(bst_node* node)
 {
     if (node->left)
         return subtree_max(node->left);
-    node_base* parent = node->parent;
+    bst_node* parent = node->parent;
     while (parent && node == parent->left) {
         node   = parent;
         parent = parent->parent;
@@ -297,9 +304,9 @@ bst<T, Compare>::subtree_pred(node_base* node)
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::left_rotate(node_base* node)
+void bst<T, Compare>::left_rotate(bst_node* node)
 {
-    node_base* child = node->right;
+    bst_node* child  = node->right;
     node->right      = child->left;
     if (child->left)
         child->left->parent = node;
@@ -315,9 +322,9 @@ void bst<T, Compare>::left_rotate(node_base* node)
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::right_rotate(node_base* node)
+void bst<T, Compare>::right_rotate(bst_node* node)
 {
-    node_base* child = node->left;
+    bst_node* child  = node->left;
     node->left       = child->right;
     if (child->right)
         child->right->parent = node;
@@ -333,10 +340,16 @@ void bst<T, Compare>::right_rotate(node_base* node)
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::base_insert(node_base* node)
+typename bst<T, Compare>::bst_node* bst<T, Compare>::make_node(const T& data)
 {
-    node_base* parent = nullptr;
-    node_base* cursor = root_;
+    return new bst_node{data};
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::base_insert(bst_node* node)
+{
+    bst_node* parent = nullptr;
+    bst_node* cursor = root_;
     while (cursor) {
         parent = cursor;
         if (*node < *parent)
@@ -354,42 +367,97 @@ void bst<T, Compare>::base_insert(node_base* node)
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::transplant(node_base* u, node_base* v)
+void bst<T, Compare>::transplant(bst_node* u, bst_node* v)
 {
+    // NOTE: this method only takes care of wiring v into the position that u
+    // currently holds (whatever happens to u is up to the caller)
+
+    // u is the root
     if (!u->parent)
         root_ = v;
+
+    // u is the left child of its parent
     else if (u == u->parent->left)
+        // replace the subtree at u with the subtree at v
         u->parent->left = v;
+
+    // u is the right child of its parent
     else
         u->parent->right = v;
+
+    // ensure the symmetry of the child-parent relationship (i.e., the parent
+    // of v must now be the original parent of u now that v is the child of
+    // this parent)
     if (v)
         v->parent = u->parent;
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::base_erase(node_base* node)
+typename bst<T, Compare>::bst_node*
+bst<T, Compare>::erase_case_no_left(bst_node* node)
 {
+    transplant(node, node->right);
+    return nullptr;
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::bst_node*
+bst<T, Compare>::erase_case_no_right(bst_node* node)
+{
+    transplant(node, node->left);
+    return nullptr;
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::erase_case_parent_of_successor(bst_node* temp,
+                                                     bst_node* successor)
+{
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::erase_case_not_parent(bst_node* node, bst_node* successor)
+{
+    transplant(successor, successor->right);
+    successor->right = node->right;
+    successor->right->parent = successor;
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::bst_node*
+bst<T, Compare>::erase_case_two_child(bst_node* node)
+{
+    bst_node* successor = subtree_min(node->right);
+    if (successor->parent == node)
+        erase_case_parent_of_successor(nullptr, successor);
+    else
+        erase_case_not_parent(node, successor);
+
+    successor->left = node->left;
+    successor->left->parent = successor;
+
+    return nullptr;
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::base_erase(bst_node* node)
+{
+    // node has no left child (and perhaps no right child as well)
     if (!node->left)
-        transplant(node, node->right);
+        erase_case_no_left(node);
+
+    // node has no right child
     else if (!node->right)
-        transplant(node, node->left);
-    else {
-        node_base* min = subtree_min(node->right);
-        if (min->parent != node) {
-            transplant(min, min->right);
-            min->right = node->right;
-            min->right->parent = min;
-        }
-        transplant(node, min);
-        min->left = node->left;
-        min->left->parent = min;
-    }
+        erase_case_no_right(node);
+
+    // node has both a left and right child
+    else
+        erase_case_two_child(node);
 
     delete node;
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::bst(const bst& source) : root_(new node_base(*source.root))
+bst<T, Compare>::bst(const bst& source) : root_(new bst_node(*source.root))
 {
 }
 
@@ -400,7 +468,7 @@ bst<T, Compare>::bst(bst&& source) : root_(std::move(source.root))
 
 template <typename T, typename Compare> bst<T, Compare>::~bst()
 {
-    auto destroy = [](node_base* node) { delete node; };
+    auto destroy = [](bst_node* node) { delete node; };
 
     postorder_visit(root_, destroy);
 }
@@ -415,7 +483,7 @@ bst<T, Compare>::insert(_P_UNUSED_ const_iterator pos, const T& data)
 template <typename T, typename Compare>
 typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
 {
-    node_base* node = new node_base{data};
+    bst_node* node = make_node(data);
     base_insert(node);
     return iterator{node};
 }
@@ -423,7 +491,7 @@ typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
 template <typename T, typename Compare>
 typename bst<T, Compare>::iterator bst<T, Compare>::erase(const_iterator pos)
 {
-    node_base* node = pos.node;
+    bst_node* node = pos.node;
     iterator next(node);
     ++next;
     base_erase(node);
@@ -433,7 +501,7 @@ typename bst<T, Compare>::iterator bst<T, Compare>::erase(const_iterator pos)
 template <typename T, typename Compare>
 typename bst<T, Compare>::iterator bst<T, Compare>::find(const T& data)
 {
-    node_base* node = subtree_find(root_, data);
+    bst_node* node = subtree_find(root_, data);
     return iterator{node};
 }
 
@@ -441,7 +509,7 @@ template <typename T, typename Compare>
 typename bst<T, Compare>::const_iterator
 bst<T, Compare>::find(const T& data) const
 {
-    node_base* node = subtree_find(root_, data);
+    bst_node* node = subtree_find(root_, data);
     return const_iterator{node};
 }
 
@@ -482,199 +550,197 @@ typename bst<T, Compare>::const_iterator bst<T, Compare>::cend() const
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::node_base::node_base(const T& data) : data(data)
+bst<T, Compare>::bst_node::bst_node(const T& data) : data(data)
 {
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::node_base::node_base(const node_base& source)
-    : data(source.data)
+bst<T, Compare>::bst_node::bst_node(const bst_node& source) : data(source.data)
 {
 }
 
 template <typename T, typename Compare>
-bool bst<T, Compare>::node_base::operator<(const node_base& rhs) const
+bool bst<T, Compare>::bst_node::operator<(const bst_node& rhs) const
 {
     return value_compare{}(data, rhs.data);
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::node_base_iterator_base::node_base_iterator_base(
-    node_base* node)
+bst<T, Compare>::bst_node_iterator_base::bst_node_iterator_base(bst_node* node)
     : node(node)
 {
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::node_base_iterator_base::node_base_iterator_base(
-    const node_base_iterator_base& source)
+bst<T, Compare>::bst_node_iterator_base::bst_node_iterator_base(
+    const bst_node_iterator_base& source)
     : node(source.node)
 {
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base_iterator_base::value_type&
-bst<T, Compare>::node_base_iterator_base::value()
+typename bst<T, Compare>::bst_node_iterator_base::value_type&
+bst<T, Compare>::bst_node_iterator_base::value()
 {
     return node->data;
 }
 
 template <typename T, typename Compare>
-const typename bst<T, Compare>::node_base_iterator_base::value_type&
-bst<T, Compare>::node_base_iterator_base::value() const
+const typename bst<T, Compare>::bst_node_iterator_base::value_type&
+bst<T, Compare>::bst_node_iterator_base::value() const
 {
     return node->data;
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base_iterator_base::value_type*
-bst<T, Compare>::node_base_iterator_base::ptr()
+typename bst<T, Compare>::bst_node_iterator_base::value_type*
+bst<T, Compare>::bst_node_iterator_base::ptr()
 {
     return std::addressof(node->data);
 }
 
 template <typename T, typename Compare>
-const typename bst<T, Compare>::node_base_iterator_base::value_type*
-bst<T, Compare>::node_base_iterator_base::ptr() const
+const typename bst<T, Compare>::bst_node_iterator_base::value_type*
+bst<T, Compare>::bst_node_iterator_base::ptr() const
 {
     return std::addressof(node->data);
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::node_base_iterator_base::increment()
+void bst<T, Compare>::bst_node_iterator_base::increment()
 {
     node = subtree_succ(node);
 }
 
 template <typename T, typename Compare>
-bool bst<T, Compare>::node_base_iterator_base::equals(
-    const node_base_iterator_base& rhs) const
+bool bst<T, Compare>::bst_node_iterator_base::equals(
+    const bst_node_iterator_base& rhs) const
 {
     return node == rhs.node;
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::node_base_iterator::node_base_iterator(node_base* node)
-    : node_base_iterator_base(node)
+bst<T, Compare>::bst_node_iterator::bst_node_iterator(bst_node* node)
+    : bst_node_iterator_base(node)
 {
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::node_base_iterator::node_base_iterator(
-    const node_base_iterator& source)
-    : node_base_iterator_base(source)
+bst<T, Compare>::bst_node_iterator::bst_node_iterator(
+    const bst_node_iterator& source)
+    : bst_node_iterator_base(source)
 {
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base_iterator::reference
-bst<T, Compare>::node_base_iterator::operator*()
+typename bst<T, Compare>::bst_node_iterator::reference
+bst<T, Compare>::bst_node_iterator::operator*()
 {
-    return node_base_iterator_base::value();
+    return bst_node_iterator_base::value();
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base_iterator::pointer
-bst<T, Compare>::node_base_iterator::operator->()
+typename bst<T, Compare>::bst_node_iterator::pointer
+bst<T, Compare>::bst_node_iterator::operator->()
 {
-    return node_base_iterator_base::ptr();
+    return bst_node_iterator_base::ptr();
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base_iterator&
-bst<T, Compare>::node_base_iterator::operator++()
+typename bst<T, Compare>::bst_node_iterator&
+bst<T, Compare>::bst_node_iterator::operator++()
 {
-    node_base_iterator_base::increment();
+    bst_node_iterator_base::increment();
     return *this;
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::node_base_iterator
-bst<T, Compare>::node_base_iterator::operator++(int)
+typename bst<T, Compare>::bst_node_iterator
+bst<T, Compare>::bst_node_iterator::operator++(int)
 {
-    node_base_iterator tmp(*this);
-    node_base_iterator_base::increment();
+    bst_node_iterator tmp(*this);
+    bst_node_iterator_base::increment();
     return tmp;
 }
 
 template <typename T, typename Compare>
-bool bst<T, Compare>::node_base_iterator::operator==(
-    const node_base_iterator& rhs) const
+bool bst<T, Compare>::bst_node_iterator::operator==(
+    const bst_node_iterator& rhs) const
 {
-    return node_base_iterator_base::equals(rhs);
+    return bst_node_iterator_base::equals(rhs);
 }
 
 template <typename T, typename Compare>
-bool bst<T, Compare>::node_base_iterator::operator!=(
-    const node_base_iterator& rhs) const
+bool bst<T, Compare>::bst_node_iterator::operator!=(
+    const bst_node_iterator& rhs) const
 {
-    return !node_base_iterator_base::equals(rhs);
+    return !bst_node_iterator_base::equals(rhs);
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::const_node_base_iterator::const_node_base_iterator(
-    node_base* node)
-    : node_base_iterator_base(node)
-{
-}
-
-template <typename T, typename Compare>
-bst<T, Compare>::const_node_base_iterator::const_node_base_iterator(
-    const const_node_base_iterator& source)
-    : node_base_iterator_base(source)
+bst<T, Compare>::const_bst_node_iterator::const_bst_node_iterator(
+    bst_node* node)
+    : bst_node_iterator_base(node)
 {
 }
 
 template <typename T, typename Compare>
-bst<T, Compare>::const_node_base_iterator::const_node_base_iterator(
-    const node_base_iterator& source)
-    : node_base_iterator_base(source)
+bst<T, Compare>::const_bst_node_iterator::const_bst_node_iterator(
+    const const_bst_node_iterator& source)
+    : bst_node_iterator_base(source)
 {
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::const_node_base_iterator::reference
-bst<T, Compare>::const_node_base_iterator::operator*()
+bst<T, Compare>::const_bst_node_iterator::const_bst_node_iterator(
+    const bst_node_iterator& source)
+    : bst_node_iterator_base(source)
 {
-    return node_base_iterator_base::value();
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::const_node_base_iterator::pointer
-bst<T, Compare>::const_node_base_iterator::operator->()
+typename bst<T, Compare>::const_bst_node_iterator::reference
+bst<T, Compare>::const_bst_node_iterator::operator*()
 {
-    return node_base_iterator_base::ptr();
+    return bst_node_iterator_base::value();
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::const_node_base_iterator&
-bst<T, Compare>::const_node_base_iterator::operator++()
+typename bst<T, Compare>::const_bst_node_iterator::pointer
+bst<T, Compare>::const_bst_node_iterator::operator->()
 {
-    node_base_iterator_base::increment();
+    return bst_node_iterator_base::ptr();
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_bst_node_iterator&
+bst<T, Compare>::const_bst_node_iterator::operator++()
+{
+    bst_node_iterator_base::increment();
     return *this;
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::const_node_base_iterator
-bst<T, Compare>::const_node_base_iterator::operator++(int)
+typename bst<T, Compare>::const_bst_node_iterator
+bst<T, Compare>::const_bst_node_iterator::operator++(int)
 {
-    const_node_base_iterator tmp(*this);
-    node_base_iterator_base::increment();
+    const_bst_node_iterator tmp(*this);
+    bst_node_iterator_base::increment();
     return tmp;
 }
 
 template <typename T, typename Compare>
-bool bst<T, Compare>::const_node_base_iterator::operator==(
-    const const_node_base_iterator& rhs) const
+bool bst<T, Compare>::const_bst_node_iterator::operator==(
+    const const_bst_node_iterator& rhs) const
 {
-    return node_base_iterator_base::equals(rhs);
+    return bst_node_iterator_base::equals(rhs);
 }
 
 template <typename T, typename Compare>
-bool bst<T, Compare>::const_node_base_iterator::operator!=(
-    const const_node_base_iterator& rhs) const
+bool bst<T, Compare>::const_bst_node_iterator::operator!=(
+    const const_bst_node_iterator& rhs) const
 {
-    return !node_base_iterator_base::equals(rhs);
+    return !bst_node_iterator_base::equals(rhs);
 }
 
 #endif

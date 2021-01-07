@@ -13,7 +13,7 @@ template <typename T, typename Compare = std::less<T>>
 class rb_tree : public bst<T, Compare>
 {
   private:
-    using bst_node = typename bst<T, Compare>::node_base;
+    using bst_node = typename bst<T, Compare>::bst_node;
     using bst      = bst<T, Compare>;
 
     using node_color              = bool;
@@ -28,7 +28,16 @@ class rb_tree : public bst<T, Compare>
     inline rb_node* grand_parent(bst_node* node);
     inline node_color& color(rb_node* node);
 
+    virtual rb_node* make_node(const T& data) override;
+
+    virtual void base_insert(bst_node* node) override;
     void fixup_insert(bst_node* node);
+
+    inline virtual bst_node* erase_case_no_left(bst_node* node) override;
+    inline virtual bst_node* erase_case_no_right(bst_node* node) override;
+    inline virtual void erase_case_parent_of_successor(bst_node* temp, bst_node* successor) override;
+    inline virtual bst_node* erase_case_two_child(bst_node* node) override;
+    virtual void base_erase(bst_node* node) override;
 
   public:
     using value_type     = typename bst::value_type;
@@ -38,13 +47,10 @@ class rb_tree : public bst<T, Compare>
     rb_tree() = default;
     rb_tree(const rb_tree& source);
     rb_tree(rb_tree&& source);
-
-    virtual iterator insert(const_iterator pos, const T& data) override;
-    virtual iterator insert(const T& data) override;
 };
 
 template <typename T, typename Compare>
-struct rb_tree<T, Compare>::rb_node : public bst::node_base {
+struct rb_tree<T, Compare>::rb_node : public bst::bst_node {
     node_color color = red;
 
     rb_node() = default;
@@ -95,6 +101,19 @@ rb_tree<T, Compare>::color(rb_node* node)
 }
 
 template <typename T, typename Compare>
+typename rb_tree<T, Compare>::rb_node* rb_tree<T, Compare>::make_node(const T& data)
+{
+    return new rb_node{data};
+}
+
+template <typename T, typename Compare>
+void rb_tree<T, Compare>::base_insert(bst_node* node)
+{
+    bst::base_insert(node);
+    fixup_insert(node);
+}
+
+template <typename T, typename Compare>
 void rb_tree<T, Compare>::fixup_insert(bst_node* node)
 {
     while (color(parent(node)) == red) {
@@ -130,6 +149,61 @@ void rb_tree<T, Compare>::fixup_insert(bst_node* node)
 }
 
 template <typename T, typename Compare>
+typename rb_tree<T, Compare>::bst_node* rb_tree<T, Compare>::erase_case_no_left(bst_node* node)
+{
+    bst::erase_case_no_left(node);
+    return node->right;
+}
+
+template <typename T, typename Compare>
+typename rb_tree<T, Compare>::bst_node* rb_tree<T, Compare>::erase_case_no_right(bst_node* node)
+{
+    bst::erase_case_no_right(node);
+    return node->left;
+}
+
+template <typename T, typename Compare>
+void rb_tree<T, Compare>::erase_case_parent_of_successor(bst_node* temp, bst_node* successor)
+{
+    temp->parent = successor;
+}
+
+template <typename T, typename Compare>
+typename rb_tree<T, Compare>::bst_node* rb_tree<T, Compare>::erase_case_two_child(bst_node* node)
+{
+    bst_node* successor = bst::subtree_min(node);
+    node_color succ_color = color(resolve(successor));
+    bst_node* succ_right = successor->right;
+    if (successor->parent == node)
+        erase_case_parent_of_successor(succ_right, successor);
+    else
+        bst::erase_case_not_parent(node, successor);
+
+    successor->left = node->left;
+    successor->left->parent = successor;
+    color(resolve(successor)) = color(resolve(node));
+    color(resolve(node)) = succ_color;
+
+    return succ_right;
+}
+
+template <typename T, typename Compare>
+void rb_tree<T, Compare>::base_erase(bst_node* node)
+{
+    bst_node* to_fix;
+    if (!node->left)
+        to_fix = erase_case_no_left(node);
+    else if (!node->right)
+        to_fix = erase_case_no_right(node);
+    else
+        to_fix = erase_case_two_child(node);
+    if (color(resolve(node)) == black)
+        /* delete_fixup(to_fix); */
+
+    delete node;
+}
+
+template <typename T, typename Compare>
 rb_tree<T, Compare>::rb_tree(const rb_tree& source) : bst(source)
 {
 }
@@ -140,30 +214,13 @@ rb_tree<T, Compare>::rb_tree(rb_tree&& source) : bst(source)
 }
 
 template <typename T, typename Compare>
-typename rb_tree<T, Compare>::iterator
-rb_tree<T, Compare>::insert(_P_UNUSED_ const_iterator pos, const T& data)
-{
-    return insert(data);
-}
-
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::iterator
-rb_tree<T, Compare>::insert(const T& data)
-{
-    rb_node* node = new rb_node{data};
-    bst::base_insert(node);
-    fixup_insert(node);
-    return iterator{node};
-}
-
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_node::rb_node(const T& data) : bst::node_base(data)
+rb_tree<T, Compare>::rb_node::rb_node(const T& data) : bst::bst_node(data)
 {
 }
 
 template <typename T, typename Compare>
 rb_tree<T, Compare>::rb_node::rb_node(const rb_node& source)
-    : bst::node_base(source)
+    : bst::bst_node(source)
 {
 }
 
