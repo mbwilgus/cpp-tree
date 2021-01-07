@@ -22,6 +22,16 @@ class rb_tree : public bst<T, Compare>
 
     struct rb_node;
 
+  public:
+    using value_type     = typename bst::value_type;
+    using iterator       = typename bst::iterator;
+    using const_iterator = typename bst::const_iterator;
+
+    rb_tree() = default;
+    rb_tree(const rb_tree& source);
+    rb_tree(rb_tree&& source);
+
+  private:
     inline rb_node* resolve(bst_node* node);
     inline rb_node* parent(bst_node* node);
     inline rb_node* uncle(bst_node* node);
@@ -39,14 +49,6 @@ class rb_tree : public bst<T, Compare>
     inline virtual bst_node* erase_case_two_child(bst_node* node) override;
     virtual void base_erase(bst_node* node) override;
 
-  public:
-    using value_type     = typename bst::value_type;
-    using iterator       = typename bst::iterator;
-    using const_iterator = typename bst::const_iterator;
-
-    rb_tree() = default;
-    rb_tree(const rb_tree& source);
-    rb_tree(rb_tree&& source);
 };
 
 template <typename T, typename Compare>
@@ -57,6 +59,27 @@ struct rb_tree<T, Compare>::rb_node : public bst::bst_node {
     rb_node(const T& data);
     rb_node(const rb_node& source);
 };
+
+template <typename T, typename Compare>
+rb_tree<T, Compare>::rb_tree(const rb_tree& source) : bst(source)
+{
+}
+
+template <typename T, typename Compare>
+rb_tree<T, Compare>::rb_tree(rb_tree&& source) : bst(source)
+{
+}
+
+template <typename T, typename Compare>
+rb_tree<T, Compare>::rb_node::rb_node(const T& data) : bst::bst_node(data)
+{
+}
+
+template <typename T, typename Compare>
+rb_tree<T, Compare>::rb_node::rb_node(const rb_node& source)
+    : bst::bst_node(source)
+{
+}
 
 template <typename T, typename Compare>
 typename rb_tree<T, Compare>::rb_node*
@@ -145,7 +168,7 @@ void rb_tree<T, Compare>::fixup_insert(bst_node* node)
         }
     }
 
-    color(resolve(bst::root())) = black;
+    color(resolve(bst::root)) = black;
 }
 
 template <typename T, typename Compare>
@@ -201,27 +224,6 @@ void rb_tree<T, Compare>::base_erase(bst_node* node)
         /* delete_fixup(to_fix); */
 
     delete node;
-}
-
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_tree(const rb_tree& source) : bst(source)
-{
-}
-
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_tree(rb_tree&& source) : bst(source)
-{
-}
-
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_node::rb_node(const T& data) : bst::bst_node(data)
-{
-}
-
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_node::rb_node(const rb_node& source)
-    : bst::bst_node(source)
-{
 }
 
 #endif
