@@ -92,6 +92,7 @@ template <typename T, typename Compare> struct bst<T, Compare>::bst_node {
     bst_node(const bst_node& source);
 
     bool operator<(const bst_node& rhs) const;
+    bool operator!=(const T& rhs) const;
 };
 
 template <typename T, typename Compare>
@@ -347,12 +348,7 @@ template <typename T, typename Compare>
 typename bst<T, Compare>::bst_node*
 bst<T, Compare>::subtree_find(bst_node* node, const T& data)
 {
-    auto not_equals = [](const T& a, const T& b) -> bool {
-        // a < b XOR b < a
-        return !value_compare{}(a, b) != !value_compare{}(b, a);
-    };
-
-    while (node && not_equals(data, node->data)) {
+    while (node && node->data != data) {
         if (value_compare{}(data, node->data))
             node = node->left;
         else
@@ -514,6 +510,12 @@ template <typename T, typename Compare>
 bool bst<T, Compare>::bst_node::operator<(const bst_node& rhs) const
 {
     return value_compare{}(data, rhs.data);
+}
+
+template <typename T, typename Compare>
+bool bst<T, Compare>::bst_node::operator!=(const T& rhs) const
+{
+    return value_compare{}(data, rhs) != value_compare{}(rhs, data);
 }
 
 template <typename T, typename Compare>
