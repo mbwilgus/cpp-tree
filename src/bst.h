@@ -3,9 +3,7 @@
 
 #include <functional>
 #include <iterator>
-#include <memory>
 #include <stack>
-#include <utility>
 
 #ifndef _P_UNUSED_
 #define _P_UNUSED_ __attribute__((unused))
@@ -36,7 +34,7 @@ template <typename T, typename Compare = std::less<T>> class bst
     iterator insert(const_iterator pos, const T& data);
     iterator insert(const T& data);
 
-    virtual iterator erase(const_iterator pos);
+    iterator erase(const_iterator pos);
 
     iterator find(const T& data);
     const_iterator find(const T& data) const;
@@ -65,21 +63,15 @@ template <typename T, typename Compare = std::less<T>> class bst
     static bst_node* subtree_succ(bst_node* node);
     static bst_node* subtree_pred(bst_node* node);
 
-    void left_rotate(bst_node* node);
-    void right_rotate(bst_node* node);
-
     virtual bst_node* make_node(const T& data);
 
     virtual void base_insert(bst_node* node);
 
     void transplant(bst_node* u, bst_node* v);
-    inline virtual bst_node* erase_case_no_left(bst_node* node);
-    inline virtual bst_node* erase_case_no_right(bst_node* node);
-    inline virtual void erase_case_parent_of_successor(bst_node* temp,
-                                                       bst_node* successor);
-    inline virtual void erase_case_not_parent(bst_node* node,
-                                              bst_node* successor);
-    inline virtual bst_node* erase_case_two_child(bst_node* node);
+
+    inline virtual void erase_single_child_node(bst_node* node, bst_node* replacement);
+    inline virtual void erase_double_child_node(bst_node* node, bst_node* replacement);
+
     virtual void base_erase(bst_node* node);
 };
 
@@ -390,42 +382,6 @@ bst<T, Compare>::subtree_pred(bst_node* node)
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::left_rotate(bst_node* node)
-{
-    bst_node* child  = node->right;
-    node->right      = child->left;
-    if (child->left)
-        child->left->parent = node;
-    child->parent = node->parent;
-    if (!node->parent)
-        root = child;
-    else if (node == node->parent->left)
-        node->parent->left = child;
-    else
-        node->parent->right = child;
-    child->left  = node;
-    node->parent = child;
-}
-
-template <typename T, typename Compare>
-void bst<T, Compare>::right_rotate(bst_node* node)
-{
-    bst_node* child  = node->left;
-    node->left       = child->right;
-    if (child->right)
-        child->right->parent = node;
-    child->parent = node->parent;
-    if (!node->parent)
-        root = child;
-    else if (node == node->parent->right)
-        node->parent->right = child;
-    else
-        node->parent->left = child;
-    child->right = node;
-    node->parent = child;
-}
-
-template <typename T, typename Compare>
 typename bst<T, Compare>::bst_node* bst<T, Compare>::make_node(const T& data)
 {
     return new bst_node{data};
@@ -479,49 +435,23 @@ void bst<T, Compare>::transplant(bst_node* u, bst_node* v)
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node*
-bst<T, Compare>::erase_case_no_left(bst_node* node)
+void bst<T, Compare>::erase_single_child_node(bst_node* node, bst_node* replacement)
 {
-    transplant(node, node->right);
-    return nullptr;
+    transplant(node, replacement);
 }
 
 template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node*
-bst<T, Compare>::erase_case_no_right(bst_node* node)
+void bst<T, Compare>::erase_double_child_node(bst_node* node, bst_node* replacement)
 {
-    transplant(node, node->left);
-    return nullptr;
-}
+    if (node != replacement->parent) {
+        transplant(replacement, replacement->right);
+        replacement->right = node->right;
+        replacement->right->parent = replacement;
+    }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::erase_case_parent_of_successor(bst_node* temp,
-                                                     bst_node* successor)
-{
-}
-
-template <typename T, typename Compare>
-void bst<T, Compare>::erase_case_not_parent(bst_node* node, bst_node* successor)
-{
-    transplant(successor, successor->right);
-    successor->right = node->right;
-    successor->right->parent = successor;
-}
-
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node*
-bst<T, Compare>::erase_case_two_child(bst_node* node)
-{
-    bst_node* successor = subtree_min(node->right);
-    if (successor->parent == node)
-        erase_case_parent_of_successor(nullptr, successor);
-    else
-        erase_case_not_parent(node, successor);
-
-    successor->left = node->left;
-    successor->left->parent = successor;
-
-    return nullptr;
+    transplant(node, replacement);
+    replacement->left = node->left;
+    replacement->left->parent = replacement;
 }
 
 template <typename T, typename Compare>
@@ -529,15 +459,17 @@ void bst<T, Compare>::base_erase(bst_node* node)
 {
     // node has no left child (and perhaps no right child as well)
     if (!node->left)
-        erase_case_no_left(node);
+        erase_single_child_node(node, node->right);
 
     // node has no right child
     else if (!node->right)
-        erase_case_no_right(node);
+        erase_single_child_node(node, node->left);
 
     // node has both a left and right child
-    else
-        erase_case_two_child(node);
+    else {
+        bst_node* successor = subtree_min(node->right);
+        erase_double_child_node(node, successor);
+    }
 
     delete node;
 }
