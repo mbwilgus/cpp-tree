@@ -47,6 +47,10 @@ template <typename T, typename Compare = std::less<T>> class bst
     const_iterator end() const;
     const_iterator cend() const;
 
+    iterator last();
+    const_iterator last() const;
+    const_iterator clast() const;
+
   protected:
     template <typename Visitor>
     static void preorder_visit(bst_node* node, Visitor visit);
@@ -257,6 +261,24 @@ template <typename T, typename Compare>
 typename bst<T, Compare>::const_iterator bst<T, Compare>::cend() const
 {
     return const_iterator{nullptr};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::iterator bst<T, Compare>::last()
+{
+    return iterator{subtree_max(root)};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator bst<T, Compare>::last() const
+{
+    return const_iterator{subtree_max(root)};
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::const_iterator bst<T, Compare>::clast() const
+{
+    return const_iterator{subtree_max(root)};
 }
 
 template <typename T, typename Compare>
