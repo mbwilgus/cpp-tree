@@ -192,7 +192,7 @@ void rb_tree<T, Compare>::erase_double_child_node(bst_node* node,
     node_color replacement_color = color(replacement);
     color(replacement)           = color(node);
     if (replacement_color == black)
-        fixup_erase(replacement);
+        fixup_erase(to_fixup);
 }
 
 template <typename T, typename Compare>
