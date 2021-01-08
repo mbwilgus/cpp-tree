@@ -10,7 +10,7 @@ class balanced_bst : public bst<T, Compare>
 {
   private:
     using bst_node = typename bst<T, Compare>::bst_node;
-    using bst = bst<T, Compare>;
+    using bst      = bst<T, Compare>;
 
   public:
     balanced_bst() = default;
@@ -22,26 +22,24 @@ class balanced_bst : public bst<T, Compare>
     void right_rotate(bst_node* node);
 
     virtual void fixup_insert(bst_node* node) = 0;
-    virtual void fixup_erase(bst_node* node) = 0;
+    virtual void fixup_erase(bst_node* node)  = 0;
 };
 
 template <typename T, typename Compare>
-balanced_bst<T, Compare>::balanced_bst(const balanced_bst& source)
-    : bst(source)
+balanced_bst<T, Compare>::balanced_bst(const balanced_bst& source) : bst(source)
 {
 }
 
 template <typename T, typename Compare>
-balanced_bst<T, Compare>::balanced_bst(balanced_bst&& source)
-    : bst(source)
+balanced_bst<T, Compare>::balanced_bst(balanced_bst&& source) : bst(source)
 {
 }
 
 template <typename T, typename Compare>
 void balanced_bst<T, Compare>::left_rotate(bst_node* node)
 {
-    bst_node* child  = node->right;
-    node->right      = child->left;
+    bst_node* child = node->right;
+    node->right     = child->left;
     if (child->left)
         child->left->parent = node;
     child->parent = node->parent;
@@ -58,8 +56,8 @@ void balanced_bst<T, Compare>::left_rotate(bst_node* node)
 template <typename T, typename Compare>
 void balanced_bst<T, Compare>::right_rotate(bst_node* node)
 {
-    bst_node* child  = node->left;
-    node->left       = child->right;
+    bst_node* child = node->left;
+    node->left      = child->right;
     if (child->right)
         child->right->parent = node;
     child->parent = node->parent;

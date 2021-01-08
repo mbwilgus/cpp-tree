@@ -69,8 +69,10 @@ template <typename T, typename Compare = std::less<T>> class bst
 
     void transplant(bst_node* u, bst_node* v);
 
-    inline virtual void erase_single_child_node(bst_node* node, bst_node* replacement);
-    inline virtual void erase_double_child_node(bst_node* node, bst_node* replacement);
+    inline virtual void erase_single_child_node(bst_node* node,
+                                                bst_node* replacement);
+    inline virtual void erase_double_child_node(bst_node* node,
+                                                bst_node* replacement);
 
     virtual void base_erase(bst_node* node);
 };
@@ -435,22 +437,24 @@ void bst<T, Compare>::transplant(bst_node* u, bst_node* v)
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::erase_single_child_node(bst_node* node, bst_node* replacement)
+void bst<T, Compare>::erase_single_child_node(bst_node* node,
+                                              bst_node* replacement)
 {
     transplant(node, replacement);
 }
 
 template <typename T, typename Compare>
-void bst<T, Compare>::erase_double_child_node(bst_node* node, bst_node* replacement)
+void bst<T, Compare>::erase_double_child_node(bst_node* node,
+                                              bst_node* replacement)
 {
     if (node != replacement->parent) {
         transplant(replacement, replacement->right);
-        replacement->right = node->right;
+        replacement->right         = node->right;
         replacement->right->parent = replacement;
     }
 
     transplant(node, replacement);
-    replacement->left = node->left;
+    replacement->left         = node->left;
     replacement->left->parent = replacement;
 }
 

@@ -13,8 +13,8 @@ template <typename T, typename Compare = std::less<T>>
 class rb_tree : public balanced_bst<T, Compare>
 {
   private:
-    using bst_node = typename bst<T, Compare>::bst_node;
-    using bst      = bst<T, Compare>;
+    using bst_node     = typename bst<T, Compare>::bst_node;
+    using bst          = bst<T, Compare>;
     using balanced_bst = balanced_bst<T, Compare>;
 
     using node_color              = bool;
@@ -44,8 +44,10 @@ class rb_tree : public balanced_bst<T, Compare>
     virtual void base_insert(bst_node* node) override;
     virtual void fixup_insert(bst_node* node) override;
 
-    inline virtual void erase_single_child_node(bst_node* node, bst_node* replacement) override;
-    inline virtual void erase_double_child_node(bst_node* node, bst_node* replacement) override;
+    inline virtual void erase_single_child_node(bst_node* node,
+                                                bst_node* replacement) override;
+    inline virtual void erase_double_child_node(bst_node* node,
+                                                bst_node* replacement) override;
     virtual void fixup_erase(bst_node* node) override;
 };
 
@@ -171,7 +173,8 @@ void rb_tree<T, Compare>::fixup_insert(bst_node* node)
 }
 
 template <typename T, typename Compare>
-void rb_tree<T, Compare>::erase_single_child_node(bst_node* node, bst_node* replacement)
+void rb_tree<T, Compare>::erase_single_child_node(bst_node* node,
+                                                  bst_node* replacement)
 {
     bst::erase_single_child_node(node, replacement);
     if (color(node) == black)
@@ -179,14 +182,15 @@ void rb_tree<T, Compare>::erase_single_child_node(bst_node* node, bst_node* repl
 }
 
 template <typename T, typename Compare>
-void rb_tree<T, Compare>::erase_double_child_node(bst_node* node, bst_node* replacement)
+void rb_tree<T, Compare>::erase_double_child_node(bst_node* node,
+                                                  bst_node* replacement)
 {
     bst_node* to_fixup = replacement->right;
     if (replacement->parent == node && to_fixup)
         to_fixup->parent = replacement;
     bst::erase_double_child_node(node, replacement);
     node_color replacement_color = color(replacement);
-    color(replacement) = color(node);
+    color(replacement)           = color(node);
     if (replacement_color == black)
         fixup_erase(replacement);
 }
@@ -198,22 +202,23 @@ void rb_tree<T, Compare>::fixup_erase(bst_node* node)
         if (node == node->parent->left) {
             bst_node* node_uncle = uncle(node);
             if (color(node_uncle) == red) {
-                color(node_uncle) = black;
+                color(node_uncle)   = black;
                 color(parent(node)) = red;
                 balanced_bst::left_rotate(node->parent);
                 node_uncle = uncle(node);
             }
-            if (color(node_uncle->left) == black && color(node_uncle->right) == black) {
+            if (color(node_uncle->left) == black &&
+                color(node_uncle->right) == black) {
                 color(node_uncle) = red;
-                node = node->parent;
+                node              = node->parent;
             } else {
                 if (color(node_uncle->right) == black) {
                     color(node_uncle->left) = black;
-                    color(node_uncle) = red;
+                    color(node_uncle)       = red;
                     balanced_bst::right_rotate(node_uncle);
                     node_uncle = node->parent->right;
                 }
-                color(node_uncle) = color(parent(node));
+                color(node_uncle)   = color(parent(node));
                 color(parent(node)) = black;
                 balanced_bst::left_rotate(node->parent);
                 node = bst::root;
@@ -221,22 +226,23 @@ void rb_tree<T, Compare>::fixup_erase(bst_node* node)
         } else {
             bst_node* node_uncle = uncle(node);
             if (color(node_uncle) == red) {
-                color(node_uncle) = black;
+                color(node_uncle)   = black;
                 color(parent(node)) = red;
                 balanced_bst::right_rotate(node->parent);
                 node_uncle = uncle(node);
             }
-            if (color(node_uncle->left) == black && color(node_uncle->right) == black) {
+            if (color(node_uncle->left) == black &&
+                color(node_uncle->right) == black) {
                 color(node_uncle) = red;
-                node = node->parent;
+                node              = node->parent;
             } else {
                 if (color(node_uncle->left) == black) {
                     color(node_uncle->right) = black;
-                    color(node_uncle) = red;
+                    color(node_uncle)        = red;
                     balanced_bst::left_rotate(node_uncle);
                     node_uncle = node->parent->left;
                 }
-                color(node_uncle) = color(parent(node));
+                color(node_uncle)   = color(parent(node));
                 color(parent(node)) = black;
                 balanced_bst::right_rotate(node->parent);
                 node = bst::root;
