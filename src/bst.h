@@ -1,7 +1,10 @@
 #ifndef __TREE_H__
 #define __TREE_H__
 
+#include <algorithm>
+#include <c++/7/bits/c++config.h>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <stack>
 
@@ -22,6 +25,7 @@ template <typename T, typename Compare = std::less<T>> class bst
 
   public:
     using value_type     = T;
+    using size_type      = std::size_t;
     using value_compare  = Compare;
     using iterator       = bst_node_iterator;
     using const_iterator = const_bst_node_iterator;
@@ -31,8 +35,18 @@ template <typename T, typename Compare = std::less<T>> class bst
     bst(bst&& source);
     virtual ~bst();
 
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+
+    void clear() noexcept;
+
     iterator insert(const_iterator pos, const T& data);
     iterator insert(const T& data);
+
+    template <typename InputIterator>
+    void insert(InputIterator first, InputIterator last);
+
+    void insert(std::initializer_list<value_type> ilist);
 
     iterator erase(const_iterator pos);
 
@@ -79,6 +93,9 @@ template <typename T, typename Compare = std::less<T>> class bst
                                                 bst_node* replacement);
 
     virtual void base_erase(bst_node* node);
+
+  private:
+    size_type size_ = 0;
 };
 
 template <typename T, typename Compare> struct bst<T, Compare>::bst_node {
@@ -189,6 +206,28 @@ template <typename T, typename Compare> bst<T, Compare>::~bst()
 }
 
 template <typename T, typename Compare>
+bool bst<T, Compare>::empty() const noexcept
+{
+    return !root;
+}
+
+template <typename T, typename Compare>
+typename bst<T, Compare>::size_type bst<T, Compare>::size() const noexcept
+{
+    return size_;
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::clear() noexcept
+{
+    auto destroy = [](bst_node* node) { delete node; };
+
+    postorder_visit(root, destroy);
+
+    size_ = 0;
+}
+
+template <typename T, typename Compare>
 typename bst<T, Compare>::iterator
 bst<T, Compare>::insert(_P_UNUSED_ const_iterator pos, const T& data)
 {
@@ -200,7 +239,21 @@ typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
 {
     bst_node* node = make_node(data);
     base_insert(node);
+    ++size_;
     return iterator{node};
+}
+
+template <typename T, typename Compare>
+template <typename InputIterator>
+void bst<T, Compare>::insert(InputIterator first, InputIterator last)
+{
+    std::for_each(first, last, [&](const value_type& data){ insert(data); });
+}
+
+template <typename T, typename Compare>
+void bst<T, Compare>::insert(std::initializer_list<value_type> ilist)
+{
+    insert(ilist.begin(), ilist.end());
 }
 
 template <typename T, typename Compare>
