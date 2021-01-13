@@ -4,18 +4,20 @@
 #include "balanced_bst.h"
 
 #include <functional>
+#include <memory>
 
 #ifndef _P_UNUSED_
 #define _P_UNUSED_ __attribute__((unsed))
 #endif
 
-template <typename T, typename Compare = std::less<T>>
-class rb_tree : public balanced_bst<T, Compare>
+template <typename T, typename Compare = std::less<T>,
+          typename Allocator = std::allocator<T>>
+class rb_tree : public balanced_bst<T, Compare, Allocator>
 {
   private:
-    using bst_node     = typename bst<T, Compare>::bst_node;
-    using bst          = bst<T, Compare>;
-    using balanced_bst = balanced_bst<T, Compare>;
+    using bst_node     = typename bst<T, Compare, Allocator>::bst_node;
+    using bst          = bst<T, Compare, Allocator>;
+    using balanced_bst = balanced_bst<T, Compare, Allocator>;
 
     using node_color              = bool;
     const static node_color red   = false;
@@ -25,6 +27,7 @@ class rb_tree : public balanced_bst<T, Compare>
 
   public:
     using value_type     = typename bst::value_type;
+    using allocator_type = typename bst::allocator_type;
     using iterator       = typename bst::iterator;
     using const_iterator = typename bst::const_iterator;
 
@@ -34,6 +37,10 @@ class rb_tree : public balanced_bst<T, Compare>
     virtual ~rb_tree() = default;
 
   private:
+    using node_allocator = typename std::allocator_traits<
+        Allocator>::template rebind_alloc<rb_node>;
+    using alloc_traits = std::allocator_traits<node_allocator>;
+
     inline rb_node* resolve(bst_node* node);
     inline rb_node* parent(bst_node* node);
     inline rb_node* uncle(bst_node* node);
@@ -49,11 +56,16 @@ class rb_tree : public balanced_bst<T, Compare>
                                                 bst_node* replacement) override;
     inline virtual void erase_double_child_node(bst_node* node,
                                                 bst_node* replacement) override;
+
+    virtual void destroy_node(bst_node* node) override;
+
     virtual void fixup_erase(bst_node* node) override;
+
+    node_allocator alloc;
 };
 
-template <typename T, typename Compare>
-struct rb_tree<T, Compare>::rb_node : public bst::bst_node {
+template <typename T, typename Compare, typename Allocator>
+struct rb_tree<T, Compare, Allocator>::rb_node : public bst::bst_node {
     node_color color = red;
 
     rb_node() = default;
@@ -61,44 +73,45 @@ struct rb_tree<T, Compare>::rb_node : public bst::bst_node {
     rb_node(const rb_node& source);
 };
 
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_tree(const rb_tree& source) : bst(source)
+template <typename T, typename Compare, typename Allocator>
+rb_tree<T, Compare, Allocator>::rb_tree(const rb_tree& source) : bst(source)
 {
 }
 
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_tree(rb_tree&& source) : bst(source)
+template <typename T, typename Compare, typename Allocator>
+rb_tree<T, Compare, Allocator>::rb_tree(rb_tree&& source) : bst(source)
 {
 }
 
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_node::rb_node(const T& data) : bst::bst_node(data)
+template <typename T, typename Compare, typename Allocator>
+rb_tree<T, Compare, Allocator>::rb_node::rb_node(const T& data)
+    : bst::bst_node(data)
 {
 }
 
-template <typename T, typename Compare>
-rb_tree<T, Compare>::rb_node::rb_node(const rb_node& source)
+template <typename T, typename Compare, typename Allocator>
+rb_tree<T, Compare, Allocator>::rb_node::rb_node(const rb_node& source)
     : bst::bst_node(source)
 {
 }
 
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::rb_node*
-rb_tree<T, Compare>::resolve(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::rb_node*
+rb_tree<T, Compare, Allocator>::resolve(bst_node* node)
 {
     return static_cast<rb_node*>(node);
 }
 
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::rb_node*
-rb_tree<T, Compare>::parent(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::rb_node*
+rb_tree<T, Compare, Allocator>::parent(bst_node* node)
 {
     return resolve(node->parent);
 }
 
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::rb_node*
-rb_tree<T, Compare>::uncle(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::rb_node*
+rb_tree<T, Compare, Allocator>::uncle(bst_node* node)
 {
     if (node->parent == node->parent->parent->left)
         return resolve(node->parent->parent->right);
@@ -106,16 +119,16 @@ rb_tree<T, Compare>::uncle(bst_node* node)
         return resolve(node->parent->parent->left);
 }
 
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::rb_node*
-rb_tree<T, Compare>::grand_parent(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::rb_node*
+rb_tree<T, Compare, Allocator>::grand_parent(bst_node* node)
 {
     return resolve(node->parent->parent);
 }
 
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::node_color&
-rb_tree<T, Compare>::color(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::node_color&
+rb_tree<T, Compare, Allocator>::color(bst_node* node)
 {
     static node_color null_color = black;
 
@@ -124,22 +137,24 @@ rb_tree<T, Compare>::color(bst_node* node)
     return null_color;
 }
 
-template <typename T, typename Compare>
-typename rb_tree<T, Compare>::rb_node*
-rb_tree<T, Compare>::make_node(const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::rb_node*
+rb_tree<T, Compare, Allocator>::make_node(const T& data)
 {
-    return new rb_node{data};
+    rb_node* node = alloc_traits::allocate(alloc, 1);
+    alloc_traits::construct(alloc, node, data);
+    return node;
 }
 
-template <typename T, typename Compare>
-void rb_tree<T, Compare>::base_insert(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void rb_tree<T, Compare, Allocator>::base_insert(bst_node* node)
 {
     bst::base_insert(node);
     fixup_insert(node);
 }
 
-template <typename T, typename Compare>
-void rb_tree<T, Compare>::fixup_insert(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void rb_tree<T, Compare, Allocator>::fixup_insert(bst_node* node)
 {
     while (color(parent(node)) == red) {
         bool case_2 = node == parent(node)->left;
@@ -173,18 +188,18 @@ void rb_tree<T, Compare>::fixup_insert(bst_node* node)
     color(bst::root) = black;
 }
 
-template <typename T, typename Compare>
-void rb_tree<T, Compare>::erase_single_child_node(bst_node* node,
-                                                  bst_node* replacement)
+template <typename T, typename Compare, typename Allocator>
+void rb_tree<T, Compare, Allocator>::erase_single_child_node(
+    bst_node* node, bst_node* replacement)
 {
     bst::erase_single_child_node(node, replacement);
     if (color(node) == black)
         fixup_erase(replacement);
 }
 
-template <typename T, typename Compare>
-void rb_tree<T, Compare>::erase_double_child_node(bst_node* node,
-                                                  bst_node* replacement)
+template <typename T, typename Compare, typename Allocator>
+void rb_tree<T, Compare, Allocator>::erase_double_child_node(
+    bst_node* node, bst_node* replacement)
 {
     bst_node* to_fixup = replacement->right;
     if (replacement->parent == node && to_fixup)
@@ -196,8 +211,16 @@ void rb_tree<T, Compare>::erase_double_child_node(bst_node* node,
         fixup_erase(to_fixup);
 }
 
-template <typename T, typename Compare>
-void rb_tree<T, Compare>::fixup_erase(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void rb_tree<T, Compare, Allocator>::destroy_node(bst_node* node)
+{
+    rb_node* resolved = resolve(node);
+    alloc_traits::destroy(alloc, resolved);
+    alloc_traits::deallocate(alloc, resolved, 1);
+}
+
+template <typename T, typename Compare, typename Allocator>
+void rb_tree<T, Compare, Allocator>::fixup_erase(bst_node* node)
 {
     while (node && node != bst::root && color(node) == black) {
         if (node == node->parent->left) {
