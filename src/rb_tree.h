@@ -24,10 +24,6 @@ class rb_tree : public balanced_bst<T, Compare>
     struct rb_node;
 
   public:
-    using value_type     = typename bst::value_type;
-    using iterator       = typename bst::iterator;
-    using const_iterator = typename bst::const_iterator;
-
     rb_tree() = default;
     rb_tree(const rb_tree& source);
     rb_tree(rb_tree&& source);
