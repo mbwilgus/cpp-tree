@@ -217,6 +217,13 @@ bst<T, Compare, Allocator>::~bst()
 }
 
 template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::allocator_type
+bst<T, Compare, Allocator>::get_allocator() const noexcept
+{
+    return allocator_type{};
+}
+
+template <typename T, typename Compare, typename Allocator>
 bool bst<T, Compare, Allocator>::empty() const noexcept
 {
     return !root;
