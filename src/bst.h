@@ -650,7 +650,7 @@ bst<T, Compare>::const_bst_node_iterator::operator--()
             before_start = true;
             next         = node;
         }
-        node = subtree_pred(node);
+        node = predecessor;
     }
     return *this;
 }
