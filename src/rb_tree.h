@@ -31,6 +31,7 @@ class rb_tree : public balanced_bst<T, Compare>
     rb_tree() = default;
     rb_tree(const rb_tree& source);
     rb_tree(rb_tree&& source);
+    virtual ~rb_tree() = default;
 
   private:
     inline rb_node* resolve(bst_node* node);
