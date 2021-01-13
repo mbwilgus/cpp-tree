@@ -7,13 +7,16 @@
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <stack>
 
 #ifndef _P_UNUSED_
 #define _P_UNUSED_ __attribute__((unused))
 #endif
 
-template <typename T, typename Compare = std::less<T>> class bst
+template <typename T, typename Compare = std::less<T>,
+          typename Allocator = std::allocator<T>>
+class bst
 {
   protected:
     struct bst_node;
@@ -21,7 +24,7 @@ template <typename T, typename Compare = std::less<T>> class bst
     class const_bst_node_iterator;
     class mutable_iterator;
 
-    bst_node* root;
+    bst_node* root = nullptr;
 
   public:
     using value_type             = T;
@@ -100,10 +103,18 @@ template <typename T, typename Compare = std::less<T>> class bst
     virtual void base_erase(bst_node* node);
 
   private:
+    using allocator      = Allocator;
+    using node_allocator = typename std::allocator_traits<
+        allocator>::template rebind_alloc<bst_node>;
+    using alloc_traits = std::allocator_traits<node_allocator>;
+
+    node_allocator alloc;
+
     size_type size_ = 0;
 };
 
-template <typename T, typename Compare> struct bst<T, Compare>::bst_node {
+template <typename T, typename Compare, typename Allocator>
+struct bst<T, Compare, Allocator>::bst_node {
     T data;
     bst_node* parent = nullptr;
     bst_node* left   = nullptr;
@@ -117,12 +128,12 @@ template <typename T, typename Compare> struct bst<T, Compare>::bst_node {
     bool operator!=(const bst_node& rhs) const;
 };
 
-template <typename T, typename Compare>
-class bst<T, Compare>::const_bst_node_iterator
+template <typename T, typename Compare, typename Allocator>
+class bst<T, Compare, Allocator>::const_bst_node_iterator
 {
   public:
     using iterator_category = std::bidirectional_iterator_tag;
-    using value_type        = typename bst<T, Compare>::value_type;
+    using value_type        = typename bst<T, Compare, Allocator>::value_type;
     using difference_type   = std::size_t;
 
     using reference = value_type&;
@@ -151,7 +162,8 @@ class bst<T, Compare>::const_bst_node_iterator
     friend class bst;
 };
 
-template <typename T, typename Compare> class bst<T, Compare>::mutable_iterator
+template <typename T, typename Compare, typename Allocator>
+class bst<T, Compare, Allocator>::mutable_iterator
 {
   public:
     using iterator_category = std::output_iterator_tag;
@@ -172,44 +184,54 @@ template <typename T, typename Compare> class bst<T, Compare>::mutable_iterator
     iterator iter;
 };
 
-template <typename T, typename Compare>
-bst<T, Compare>::bst(const bst& source) : root(new bst_node(*source.root))
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::bst(const bst& source)
+    : root(new bst_node(*source.root))
 {
 }
 
-template <typename T, typename Compare>
-bst<T, Compare>::bst(bst&& source) : root(std::move(source.root))
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::bst(bst&& source) : root(std::move(source.root))
 {
 }
 
-template <typename T, typename Compare> bst<T, Compare>::~bst()
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::~bst()
 {
-    auto destroy = [](bst_node* node) { delete node; };
+    auto destroy = [this](bst_node* node) {
+        alloc_traits::destroy(alloc, node);
+        alloc_traits::deallocate(alloc, node, 1);
+    };
 
     postorder_visit(root, destroy);
 }
 
-template <typename T, typename Compare>
-bool bst<T, Compare>::empty() const noexcept
+template <typename T, typename Compare, typename Allocator>
+bool bst<T, Compare, Allocator>::empty() const noexcept
 {
     return !root;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::size_type bst<T, Compare>::size() const noexcept
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::size_type
+bst<T, Compare, Allocator>::size() const noexcept
 {
     return size_;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::size_type bst<T, Compare>::height() const noexcept
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::size_type
+bst<T, Compare, Allocator>::height() const noexcept
 {
     return subtree_depth(root);
 }
 
-template <typename T, typename Compare> void bst<T, Compare>::clear() noexcept
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::clear() noexcept
 {
-    auto destroy = [](bst_node* node) { delete node; };
+    auto destroy = [this](bst_node* node) {
+        alloc_traits::destroy(alloc, node);
+    };
 
     postorder_visit(root, destroy);
 
@@ -217,15 +239,16 @@ template <typename T, typename Compare> void bst<T, Compare>::clear() noexcept
     size_ = 0;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator
-bst<T, Compare>::insert(_P_UNUSED_ const_iterator pos, const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::insert(_P_UNUSED_ const_iterator pos, const T& data)
 {
     return insert(data);
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::insert(const T& data)
 {
     bst_node* node = make_node(data);
     base_insert(node);
@@ -233,21 +256,22 @@ typename bst<T, Compare>::iterator bst<T, Compare>::insert(const T& data)
     return iterator{node};
 }
 
-template <typename T, typename Compare>
+template <typename T, typename Compare, typename Allocator>
 template <typename InputIterator>
-void bst<T, Compare>::insert(InputIterator first, InputIterator last)
+void bst<T, Compare, Allocator>::insert(InputIterator first, InputIterator last)
 {
     std::for_each(first, last, [&](const value_type& data) { insert(data); });
 }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::insert(std::initializer_list<value_type> ilist)
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::insert(std::initializer_list<value_type> ilist)
 {
     insert(ilist.begin(), ilist.end());
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator bst<T, Compare>::erase(const_iterator pos)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::erase(const_iterator pos)
 {
     bst_node* node = pos.node;
     iterator next(node);
@@ -256,9 +280,9 @@ typename bst<T, Compare>::iterator bst<T, Compare>::erase(const_iterator pos)
     return next;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator bst<T, Compare>::modify(const_iterator pos,
-                                                           const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::modify(const_iterator pos, const T& data)
 {
     bst_node* node = make_node(data);
     iterator iter(pos);
@@ -270,48 +294,53 @@ typename bst<T, Compare>::iterator bst<T, Compare>::modify(const_iterator pos,
     return iter;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator bst<T, Compare>::find(const T& data) const
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::find(const T& data) const
 {
     bst_node* node = subtree_find(root, data);
     return iterator{node};
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::position_modifier
-bst<T, Compare>::position(const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::position_modifier
+bst<T, Compare, Allocator>::position(const T& data)
 {
     iterator pos = find(data);
     return position_modifier{this, pos};
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator bst<T, Compare>::begin() const
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::begin() const
 {
     return iterator{subtree_min(root)};
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::iterator bst<T, Compare>::end() const
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::iterator
+bst<T, Compare, Allocator>::end() const
 {
     return ++iterator{subtree_max(root)};
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::reverse_iterator bst<T, Compare>::rbegin() const
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::reverse_iterator
+bst<T, Compare, Allocator>::rbegin() const
 {
     return std::make_reverse_iterator(end());
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::reverse_iterator bst<T, Compare>::rend() const
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::reverse_iterator
+bst<T, Compare, Allocator>::rend() const
 {
     return std::make_reverse_iterator(begin());
 }
 
-template <typename T, typename Compare>
+template <typename T, typename Compare, typename Allocator>
 template <typename Visitor>
-void bst<T, Compare>::preorder_visit(bst_node* node, Visitor visit)
+void bst<T, Compare, Allocator>::preorder_visit(bst_node* node, Visitor visit)
 {
     std::stack<bst_node*> traversal;
 
@@ -331,9 +360,9 @@ void bst<T, Compare>::preorder_visit(bst_node* node, Visitor visit)
     }
 }
 
-template <typename T, typename Compare>
+template <typename T, typename Compare, typename Allocator>
 template <typename Visitor>
-void bst<T, Compare>::inorder_visit(bst_node* node, Visitor visit)
+void bst<T, Compare, Allocator>::inorder_visit(bst_node* node, Visitor visit)
 {
     bst_node* cursor = subtree_min(node);
     while (cursor) {
@@ -342,9 +371,9 @@ void bst<T, Compare>::inorder_visit(bst_node* node, Visitor visit)
     }
 }
 
-template <typename T, typename Compare>
+template <typename T, typename Compare, typename Allocator>
 template <typename Visitor>
-void bst<T, Compare>::postorder_visit(bst_node* node, Visitor visit)
+void bst<T, Compare, Allocator>::postorder_visit(bst_node* node, Visitor visit)
 {
     std::stack<bst_node*> setup;
     std::stack<bst_node*> traversal;
@@ -371,9 +400,9 @@ void bst<T, Compare>::postorder_visit(bst_node* node, Visitor visit)
     }
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::size_type
-bst<T, Compare>::subtree_depth(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::size_type
+bst<T, Compare, Allocator>::subtree_depth(bst_node* node)
 {
     std::deque<bst_node*> queue;
     queue.push_back(node);
@@ -401,9 +430,9 @@ bst<T, Compare>::subtree_depth(bst_node* node)
     return --h;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node*
-bst<T, Compare>::subtree_find(bst_node* node, const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::subtree_find(bst_node* node, const T& data)
 {
     bst_node rhs(data);
 
@@ -416,25 +445,27 @@ bst<T, Compare>::subtree_find(bst_node* node, const T& data)
     return node;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node* bst<T, Compare>::subtree_min(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::subtree_min(bst_node* node)
 {
     while (node->left)
         node = node->left;
     return node;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node* bst<T, Compare>::subtree_max(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::subtree_max(bst_node* node)
 {
     while (node->right)
         node = node->right;
     return node;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node*
-bst<T, Compare>::subtree_succ(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::subtree_succ(bst_node* node)
 {
     if (!node)
         return nullptr;
@@ -448,9 +479,9 @@ bst<T, Compare>::subtree_succ(bst_node* node)
     return parent;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node*
-bst<T, Compare>::subtree_pred(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::subtree_pred(bst_node* node)
 {
     if (!node)
         return nullptr;
@@ -464,14 +495,17 @@ bst<T, Compare>::subtree_pred(bst_node* node)
     return parent;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::bst_node* bst<T, Compare>::make_node(const T& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::make_node(const T& data)
 {
-    return new bst_node{data};
+    bst_node* node = alloc_traits::allocate(alloc, 1);
+    alloc_traits::construct(alloc, node, data);
+    return node;
 }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::base_insert(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::base_insert(bst_node* node)
 {
     bst_node* parent = nullptr;
     bst_node* cursor = root;
@@ -491,8 +525,8 @@ void bst<T, Compare>::base_insert(bst_node* node)
         parent->right = node;
 }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::transplant(bst_node* u, bst_node* v)
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::transplant(bst_node* u, bst_node* v)
 {
     // NOTE: this method only takes care of wiring v into the position that u
     // currently holds (whatever happens to u is up to the caller)
@@ -517,16 +551,16 @@ void bst<T, Compare>::transplant(bst_node* u, bst_node* v)
         v->parent = u->parent;
 }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::erase_single_child_node(bst_node* node,
-                                              bst_node* replacement)
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::erase_single_child_node(bst_node* node,
+                                                         bst_node* replacement)
 {
     transplant(node, replacement);
 }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::erase_double_child_node(bst_node* node,
-                                              bst_node* replacement)
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::erase_double_child_node(bst_node* node,
+                                                         bst_node* replacement)
 {
     if (node != replacement->parent) {
         transplant(replacement, replacement->right);
@@ -539,8 +573,8 @@ void bst<T, Compare>::erase_double_child_node(bst_node* node,
     replacement->left->parent = replacement;
 }
 
-template <typename T, typename Compare>
-void bst<T, Compare>::base_erase(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void bst<T, Compare, Allocator>::base_erase(bst_node* node)
 {
     // node has no left child (and perhaps no right child as well)
     if (!node->left)
@@ -556,63 +590,64 @@ void bst<T, Compare>::base_erase(bst_node* node)
         erase_double_child_node(node, successor);
     }
 
-    delete node;
+    alloc_traits::destroy(alloc, node);
 }
 
-template <typename T, typename Compare>
-bst<T, Compare>::bst_node::bst_node(const T& data) : data(data)
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::bst_node::bst_node(const T& data) : data(data)
 {
 }
 
-template <typename T, typename Compare>
-bst<T, Compare>::bst_node::bst_node(const bst_node& source) : data(source.data)
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::bst_node::bst_node(const bst_node& source)
+    : data(source.data)
 {
 }
 
-template <typename T, typename Compare>
-bool bst<T, Compare>::bst_node::operator<(const bst_node& rhs) const
+template <typename T, typename Compare, typename Allocator>
+bool bst<T, Compare, Allocator>::bst_node::operator<(const bst_node& rhs) const
 {
     return value_compare{}(data, rhs.data);
 }
 
-template <typename T, typename Compare>
-bool bst<T, Compare>::bst_node::operator!=(const bst_node& rhs) const
+template <typename T, typename Compare, typename Allocator>
+bool bst<T, Compare, Allocator>::bst_node::operator!=(const bst_node& rhs) const
 {
     return value_compare{}(data, rhs.data) != value_compare{}(rhs.data, data);
 }
 
-template <typename T, typename Compare>
-bst<T, Compare>::const_bst_node_iterator::const_bst_node_iterator(
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::const_bst_node_iterator::const_bst_node_iterator(
     bst_node* node)
     : node(node)
 {
 }
 
-template <typename T, typename Compare>
-bst<T, Compare>::const_bst_node_iterator::const_bst_node_iterator(
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::const_bst_node_iterator::const_bst_node_iterator(
     const const_bst_node_iterator& source)
     : node(source.node), before_start(source.before_start),
       after_end(source.after_end), next(source.next)
 {
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::const_bst_node_iterator::reference
-bst<T, Compare>::const_bst_node_iterator::operator*()
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::const_bst_node_iterator::reference
+bst<T, Compare, Allocator>::const_bst_node_iterator::operator*()
 {
     return node->data;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::const_bst_node_iterator::pointer
-bst<T, Compare>::const_bst_node_iterator::operator->()
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::const_bst_node_iterator::pointer
+bst<T, Compare, Allocator>::const_bst_node_iterator::operator->()
 {
     return std::addressof(node->data);
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::const_bst_node_iterator&
-bst<T, Compare>::const_bst_node_iterator::operator++()
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::const_bst_node_iterator&
+bst<T, Compare, Allocator>::const_bst_node_iterator::operator++()
 {
     if (before_start) {
         node         = next;
@@ -628,18 +663,18 @@ bst<T, Compare>::const_bst_node_iterator::operator++()
     return *this;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::const_bst_node_iterator
-bst<T, Compare>::const_bst_node_iterator::operator++(int)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::const_bst_node_iterator
+bst<T, Compare, Allocator>::const_bst_node_iterator::operator++(int)
 {
     const_bst_node_iterator tmp(*this);
     ++*this;
     return tmp;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::const_bst_node_iterator&
-bst<T, Compare>::const_bst_node_iterator::operator--()
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::const_bst_node_iterator&
+bst<T, Compare, Allocator>::const_bst_node_iterator::operator--()
 {
     if (after_end) {
         node      = next;
@@ -655,52 +690,54 @@ bst<T, Compare>::const_bst_node_iterator::operator--()
     return *this;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::const_bst_node_iterator
-bst<T, Compare>::const_bst_node_iterator::operator--(int)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::const_bst_node_iterator
+bst<T, Compare, Allocator>::const_bst_node_iterator::operator--(int)
 {
     const_bst_node_iterator tmp(*this);
     --*this;
     return tmp;
 }
 
-template <typename T, typename Compare>
-bool bst<T, Compare>::const_bst_node_iterator::operator==(
+template <typename T, typename Compare, typename Allocator>
+bool bst<T, Compare, Allocator>::const_bst_node_iterator::operator==(
     const const_bst_node_iterator& rhs) const
 {
     return node == rhs.node;
 }
 
-template <typename T, typename Compare>
-bool bst<T, Compare>::const_bst_node_iterator::operator!=(
+template <typename T, typename Compare, typename Allocator>
+bool bst<T, Compare, Allocator>::const_bst_node_iterator::operator!=(
     const const_bst_node_iterator& rhs) const
 {
     return !operator==(rhs);
 }
 
-template <typename T, typename Compare>
-bst<T, Compare>::mutable_iterator::mutable_iterator(bst* t, iterator iter)
+template <typename T, typename Compare, typename Allocator>
+bst<T, Compare, Allocator>::mutable_iterator::mutable_iterator(bst* t,
+                                                               iterator iter)
     : t(t), iter(iter)
 {
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::mutable_iterator&
-bst<T, Compare>::mutable_iterator::operator++()
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::mutable_iterator&
+bst<T, Compare, Allocator>::mutable_iterator::operator++()
 {
     return this;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::mutable_iterator&
-bst<T, Compare>::mutable_iterator::operator++(int)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::mutable_iterator&
+bst<T, Compare, Allocator>::mutable_iterator::operator++(int)
 {
     return this;
 }
 
-template <typename T, typename Compare>
-typename bst<T, Compare>::mutable_iterator&
-bst<T, Compare>::mutable_iterator::operator=(const bst::value_type& data)
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::mutable_iterator&
+bst<T, Compare, Allocator>::mutable_iterator::operator=(
+    const bst::value_type& data)
 {
     if (iter == t->end())
         iter = t->insert(iter, data);
