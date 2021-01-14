@@ -4,13 +4,15 @@
 #include "bst.h"
 
 #include <functional>
+#include <memory>
 
-template <typename T, typename Compare = std::less<T>>
-class balanced_bst : public bst<T, Compare>
+template <typename T, typename Compare = std::less<T>,
+          typename Allocator = std::allocator<T>>
+class balanced_bst : public bst<T, Compare, Allocator>
 {
   private:
-    using bst_node = typename bst<T, Compare>::bst_node;
-    using bst      = bst<T, Compare>;
+    using bst_node = typename bst<T, Compare, Allocator>::bst_node;
+    using bst      = bst<T, Compare, Allocator>;
 
   public:
     balanced_bst() = default;
@@ -25,18 +27,20 @@ class balanced_bst : public bst<T, Compare>
     virtual void fixup_erase(bst_node* node)  = 0;
 };
 
-template <typename T, typename Compare>
-balanced_bst<T, Compare>::balanced_bst(const balanced_bst& source) : bst(source)
+template <typename T, typename Compare, typename Allocator>
+balanced_bst<T, Compare, Allocator>::balanced_bst(const balanced_bst& source)
+    : bst(source)
 {
 }
 
-template <typename T, typename Compare>
-balanced_bst<T, Compare>::balanced_bst(balanced_bst&& source) : bst(source)
+template <typename T, typename Compare, typename Allocator>
+balanced_bst<T, Compare, Allocator>::balanced_bst(balanced_bst&& source)
+    : bst(source)
 {
 }
 
-template <typename T, typename Compare>
-void balanced_bst<T, Compare>::left_rotate(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void balanced_bst<T, Compare, Allocator>::left_rotate(bst_node* node)
 {
     bst_node* child = node->right;
     node->right     = child->left;
@@ -53,8 +57,8 @@ void balanced_bst<T, Compare>::left_rotate(bst_node* node)
     node->parent = child;
 }
 
-template <typename T, typename Compare>
-void balanced_bst<T, Compare>::right_rotate(bst_node* node)
+template <typename T, typename Compare, typename Allocator>
+void balanced_bst<T, Compare, Allocator>::right_rotate(bst_node* node)
 {
     bst_node* child = node->left;
     node->left      = child->right;
