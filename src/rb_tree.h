@@ -48,6 +48,7 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
     inline node_color& color(bst_node* node);
 
     virtual rb_node* make_node(const T& data) override;
+    virtual rb_node* copy_node(bst_node* node) override;
 
     virtual void base_insert(bst_node* node) override;
     virtual void fixup_insert(bst_node* node) override;
@@ -91,7 +92,7 @@ rb_tree<T, Compare, Allocator>::rb_node::rb_node(const T& data)
 
 template <typename T, typename Compare, typename Allocator>
 rb_tree<T, Compare, Allocator>::rb_node::rb_node(const rb_node& source)
-    : bst::bst_node(source)
+    : bst::bst_node(source), color(source.color)
 {
 }
 
@@ -143,6 +144,15 @@ rb_tree<T, Compare, Allocator>::make_node(const T& data)
 {
     rb_node* node = alloc_traits::allocate(alloc, 1);
     alloc_traits::construct(alloc, node, data);
+    return node;
+}
+
+template <typename T, typename Compare, typename Allocator>
+typename rb_tree<T, Compare, Allocator>::rb_node*
+rb_tree<T, Compare, Allocator>::copy_node(bst_node* node)
+{
+    rb_node* copy = alloc_traits::allocate(alloc, 1);
+    alloc_traits::construct(alloc, node, resolve(node));
     return node;
 }
 

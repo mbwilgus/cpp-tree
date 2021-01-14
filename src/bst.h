@@ -2,7 +2,6 @@
 #define __BST_H__
 
 #include <algorithm>
-#include <c++/7/bits/c++config.h>
 #include <deque>
 #include <functional>
 #include <initializer_list>
@@ -103,6 +102,7 @@ class bst
     static bst_node* subtree_pred(bst_node* node);
 
     virtual bst_node* make_node(const T& data);
+    virtual bst_node* copy_node(bst_node* node);
 
     virtual void base_insert(bst_node* node);
 
@@ -200,8 +200,29 @@ class bst<T, Compare, Allocator>::mutable_iterator
 
 template <typename T, typename Compare, typename Allocator>
 bst<T, Compare, Allocator>::bst(const bst& source)
-    : root(new bst_node(*source.root))
 {
+    std::stack<bst_node*> parent_copies;
+
+    auto copy_and_connect = [&](bst_node* node) {
+        bst_node* copy = copy_node(node);
+
+        if (node->parent) {
+            bst_node* parent = parent_copies.top();
+            copy->parent = parent;
+            if (node == node->parent->left)
+                parent->left = copy;
+            else {
+                parent->right = copy;
+                parent_copies.pop();
+            }
+        } else
+            root = copy;
+
+        if (node->left || node->right)
+            parent_copies.push(copy);
+    };
+
+    preorder_visit(source.root, copy_and_connect);
 }
 
 template <typename T, typename Compare, typename Allocator>
@@ -525,6 +546,15 @@ bst<T, Compare, Allocator>::make_node(const T& data)
     bst_node* node = alloc_traits::allocate(alloc, 1);
     alloc_traits::construct(alloc, node, data);
     return node;
+}
+
+template <typename T, typename Compare, typename Allocator>
+typename bst<T, Compare, Allocator>::bst_node*
+bst<T, Compare, Allocator>::copy_node(bst_node* node)
+{
+    bst_node* copy = alloc_traits::allocate(alloc, 1);
+    alloc_traits::construct(alloc, copy, node);
+    return copy;
 }
 
 template <typename T, typename Compare, typename Allocator>
