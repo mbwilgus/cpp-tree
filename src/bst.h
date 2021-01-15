@@ -553,7 +553,7 @@ typename bst<T, Compare, Allocator>::bst_node*
 bst<T, Compare, Allocator>::copy_node(bst_node* node)
 {
     bst_node* copy = alloc_traits::allocate(alloc, 1);
-    alloc_traits::construct(alloc, copy, node);
+    alloc_traits::construct(alloc, copy, *node);
     return copy;
 }
 

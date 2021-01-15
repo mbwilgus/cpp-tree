@@ -70,12 +70,13 @@ struct rb_tree<T, Compare, Allocator>::rb_node : public bst::bst_node {
 };
 
 template <typename T, typename Compare, typename Allocator>
-rb_tree<T, Compare, Allocator>::rb_tree(const rb_tree& source) : bst(source)
+rb_tree<T, Compare, Allocator>::rb_tree(const rb_tree& source)
+    : balanced_bst(source)
 {
 }
 
 template <typename T, typename Compare, typename Allocator>
-rb_tree<T, Compare, Allocator>::rb_tree(rb_tree&& source) : bst(source)
+rb_tree<T, Compare, Allocator>::rb_tree(rb_tree&& source) : balanced_bst(source)
 {
 }
 
@@ -147,8 +148,8 @@ typename rb_tree<T, Compare, Allocator>::rb_node*
 rb_tree<T, Compare, Allocator>::copy_node(bst_node* node)
 {
     rb_node* copy = alloc_traits::allocate(alloc, 1);
-    alloc_traits::construct(alloc, node, resolve(node));
-    return node;
+    alloc_traits::construct(alloc, copy, *resolve(node));
+    return copy;
 }
 
 template <typename T, typename Compare, typename Allocator>
