@@ -17,6 +17,7 @@ class balanced_bst : public bst<T, Compare, Allocator>
   public:
     balanced_bst() = default;
     balanced_bst(balanced_bst&& source);
+    virtual ~balanced_bst() = default;
 
   protected:
     void left_rotate(bst_node* node);

@@ -29,12 +29,12 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
     rb_tree() = default;
     rb_tree(const rb_tree& source);
     rb_tree(rb_tree&& source);
-    virtual ~rb_tree() = default;
+    virtual ~rb_tree();
 
   private:
-    using node_allocator = typename std::allocator_traits<
-        Allocator>::template rebind_alloc<rb_node>;
-    using alloc_traits = std::allocator_traits<node_allocator>;
+    using value_traits = typename bst::value_traits;
+    using node_alloc   = typename value_traits::template rebind_alloc<rb_node>;
+    using node_traits  = std::allocator_traits<node_alloc>;
 
     inline rb_node* resolve(bst_node* node);
     inline rb_node* parent(bst_node* node);
@@ -54,7 +54,7 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
 
     virtual void fixup_erase(bst_node* node) override;
 
-    node_allocator alloc;
+    node_alloc alloc;
 };
 
 template <typename T, typename Compare, typename Allocator>
@@ -69,13 +69,20 @@ struct rb_tree<T, Compare, Allocator>::rb_node : public bst::bst_node {
 template <typename T, typename Compare, typename Allocator>
 rb_tree<T, Compare, Allocator>::rb_tree(const rb_tree& source)
 {
-    bst::root = bst::copy_tree(source.root, alloc);
+    bst::root  = bst::copy_tree(source.root, alloc);
     bst::size_ = source.size_;
 }
 
 template <typename T, typename Compare, typename Allocator>
 rb_tree<T, Compare, Allocator>::rb_tree(rb_tree&& source) : balanced_bst(source)
 {
+}
+
+template <typename T, typename Compare, typename Allocator>
+rb_tree<T, Compare, Allocator>::~rb_tree()
+{
+    bst::destroy_tree(bst::root, alloc);
+    bst::root = nullptr;
 }
 
 template <typename T, typename Compare, typename Allocator>
@@ -136,8 +143,8 @@ template <typename T, typename Compare, typename Allocator>
 typename rb_tree<T, Compare, Allocator>::rb_node*
 rb_tree<T, Compare, Allocator>::make_node(const T& data)
 {
-    rb_node* node = alloc_traits::allocate(alloc, 1);
-    alloc_traits::construct(alloc, node, data);
+    rb_node* node = node_traits::allocate(alloc, 1);
+    node_traits::construct(alloc, node, data);
     return node;
 }
 

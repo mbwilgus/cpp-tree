@@ -48,7 +48,7 @@ class bst
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using reverse_iterator       = const_reverse_iterator;
 
-    using position_modifier = mutable_iterator;
+    using position = mutable_iterator;
 
     bst() = default;
     bst(const bst& source);
@@ -78,7 +78,7 @@ class bst
 
     iterator find(const T& data) const;
 
-    position_modifier position(const T& data);
+    position position_of(const T& data);
 
     iterator begin() const;
     iterator end() const;
@@ -124,8 +124,8 @@ class bst
     virtual void base_erase(bst_node* node);
 
   private:
-    using node_alloc   = typename value_traits::template rebind_alloc<bst_node>;
-    using alloc_traits = std::allocator_traits<node_alloc>;
+    using node_alloc  = typename value_traits::template rebind_alloc<bst_node>;
+    using node_traits = std::allocator_traits<node_alloc>;
 
     node_alloc alloc;
 };
@@ -326,11 +326,11 @@ bst<T, Compare, Allocator>::find(const T& data) const
 }
 
 template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::position_modifier
-bst<T, Compare, Allocator>::position(const T& data)
+typename bst<T, Compare, Allocator>::position
+bst<T, Compare, Allocator>::position_of(const T& data)
 {
     iterator pos = find(data);
-    return position_modifier{this, pos};
+    return position{this, pos};
 }
 
 template <typename T, typename Compare, typename Allocator>
@@ -572,15 +572,16 @@ void bst<T, Compare, Allocator>::destroy_tree(bst_node* root,
         traits::deallocate(alloc, static_cast<node_ptr>(node), 1);
     };
 
-    postorder_visit(root, destroy);
+    if (root)
+        postorder_visit(root, destroy);
 }
 
 template <typename T, typename Compare, typename Allocator>
 typename bst<T, Compare, Allocator>::bst_node*
 bst<T, Compare, Allocator>::make_node(const T& data)
 {
-    bst_node* node = alloc_traits::allocate(alloc, 1);
-    alloc_traits::construct(alloc, node, data);
+    bst_node* node = node_traits::allocate(alloc, 1);
+    node_traits::construct(alloc, node, data);
     return node;
 }
 
