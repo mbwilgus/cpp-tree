@@ -16,8 +16,8 @@ class balanced_bst : public bst<T, Compare, Allocator>
 
   public:
     balanced_bst() = default;
-    balanced_bst(const balanced_bst& source);
     balanced_bst(balanced_bst&& source);
+    virtual ~balanced_bst() = default;
 
   protected:
     void left_rotate(bst_node* node);
@@ -26,12 +26,6 @@ class balanced_bst : public bst<T, Compare, Allocator>
     virtual void fixup_insert(bst_node* node) = 0;
     virtual void fixup_erase(bst_node* node)  = 0;
 };
-
-template <typename T, typename Compare, typename Allocator>
-balanced_bst<T, Compare, Allocator>::balanced_bst(const balanced_bst& source)
-    : bst(source)
-{
-}
 
 template <typename T, typename Compare, typename Allocator>
 balanced_bst<T, Compare, Allocator>::balanced_bst(balanced_bst&& source)

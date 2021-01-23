@@ -18,12 +18,16 @@ template <typename T, typename Compare = std::less<T>,
 class bst
 {
   protected:
+    using value_traits = std::allocator_traits<Allocator>;
+
     struct bst_node;
 
     class const_bst_node_iterator;
     class mutable_iterator;
 
     bst_node* root = nullptr;
+
+    std::size_t size_ = 0;
 
   public:
     using value_type = T;
@@ -36,16 +40,15 @@ class bst
     using reference       = value_type&;
     using const_reference = const value_type&;
 
-    using pointer = typename std::allocator_traits<Allocator>::pointer;
-    using const_pointer =
-        typename std::allocator_traits<Allocator>::const_pointer;
+    using pointer       = typename value_traits::pointer;
+    using const_pointer = typename value_traits::const_pointer;
 
     using const_iterator         = const_bst_node_iterator;
     using iterator               = const_iterator;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using reverse_iterator       = const_reverse_iterator;
 
-    using position_modifier = mutable_iterator;
+    using position = mutable_iterator;
 
     bst() = default;
     bst(const bst& source);
@@ -75,7 +78,7 @@ class bst
 
     iterator find(const T& data) const;
 
-    position_modifier position(const T& data);
+    position position_of(const T& data);
 
     iterator begin() const;
     iterator end() const;
@@ -101,8 +104,13 @@ class bst
     static bst_node* subtree_succ(bst_node* node);
     static bst_node* subtree_pred(bst_node* node);
 
+    template <typename NodeAllocator>
+    static bst_node* copy_tree(bst_node* root, NodeAllocator& alloc);
+
+    template <typename NodeAllocator>
+    static void destroy_tree(bst_node* root, NodeAllocator& alloc);
+
     virtual bst_node* make_node(const T& data);
-    virtual bst_node* copy_node(bst_node* node);
 
     virtual void base_insert(bst_node* node);
 
@@ -113,18 +121,13 @@ class bst
     inline virtual void erase_double_child_node(bst_node* node,
                                                 bst_node* replacement);
 
-    virtual void destroy_node(bst_node* node);
-
     virtual void base_erase(bst_node* node);
 
   private:
-    using node_allocator = typename std::allocator_traits<
-        Allocator>::template rebind_alloc<bst_node>;
-    using alloc_traits = std::allocator_traits<node_allocator>;
+    using node_alloc  = typename value_traits::template rebind_alloc<bst_node>;
+    using node_traits = std::allocator_traits<node_alloc>;
 
-    node_allocator alloc;
-
-    size_type size_ = 0;
+    node_alloc alloc;
 };
 
 template <typename T, typename Compare, typename Allocator>
@@ -201,40 +204,20 @@ class bst<T, Compare, Allocator>::mutable_iterator
 template <typename T, typename Compare, typename Allocator>
 bst<T, Compare, Allocator>::bst(const bst& source)
 {
-    std::stack<bst_node*> parent_copies;
-
-    auto copy_and_connect = [&](bst_node* node) {
-        bst_node* copy = copy_node(node);
-
-        if (node->parent) {
-            bst_node* parent = parent_copies.top();
-            copy->parent = parent;
-            if (node == node->parent->left)
-                parent->left = copy;
-            else {
-                parent->right = copy;
-                parent_copies.pop();
-            }
-        } else
-            root = copy;
-
-        if (node->left || node->right)
-            parent_copies.push(copy);
-    };
-
-    preorder_visit(source.root, copy_and_connect);
+    root  = copy_tree(source.root, alloc);
+    size_ = source.size_;
 }
 
 template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::bst(bst&& source) : root(std::move(source.root))
+bst<T, Compare, Allocator>::bst(bst&& source)
+    : root(std::move(source.root)), size_(std::move(source.size))
 {
 }
 
 template <typename T, typename Compare, typename Allocator>
 bst<T, Compare, Allocator>::~bst()
 {
-    auto destroy = [this](bst_node* node) { destroy_node(node); };
-    postorder_visit(root, destroy);
+    destroy_tree(root, alloc);
 }
 
 template <typename T, typename Compare, typename Allocator>
@@ -267,9 +250,7 @@ bst<T, Compare, Allocator>::height() const noexcept
 template <typename T, typename Compare, typename Allocator>
 void bst<T, Compare, Allocator>::clear() noexcept
 {
-    auto destroy = [this](bst_node* node) { destroy_node(node); };
-    postorder_visit(root, destroy);
-
+    destroy_tree(root, alloc);
     root  = nullptr; // otherwise might contain grabage data
     size_ = 0;
 }
@@ -313,7 +294,6 @@ bst<T, Compare, Allocator>::erase(const_iterator pos)
     bst_node* node = pos.node;
     bst_node* next = subtree_succ(node);
     base_erase(node);
-    destroy_node(node);
 
     --size_;
 
@@ -331,7 +311,6 @@ bst<T, Compare, Allocator>::modify(const_iterator pos, const T& data)
     iterator iter(pos);
     if (pos.node != node) {
         base_erase(pos.node);
-        destroy_node(pos.node);
         base_insert(node);
         iter = iterator{node};
     }
@@ -347,11 +326,11 @@ bst<T, Compare, Allocator>::find(const T& data) const
 }
 
 template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::position_modifier
-bst<T, Compare, Allocator>::position(const T& data)
+typename bst<T, Compare, Allocator>::position
+bst<T, Compare, Allocator>::position_of(const T& data)
 {
     iterator pos = find(data);
-    return position_modifier{this, pos};
+    return position{this, pos};
 }
 
 template <typename T, typename Compare, typename Allocator>
@@ -398,9 +377,9 @@ void bst<T, Compare, Allocator>::preorder_visit(bst_node* node, Visitor visit)
         visit(cursor);
 
         if (cursor->right)
-            traversal.push(node->right);
+            traversal.push(cursor->right);
         if (cursor->left)
-            traversal.push(node->left);
+            traversal.push(cursor->left);
     }
 }
 
@@ -540,21 +519,70 @@ bst<T, Compare, Allocator>::subtree_pred(bst_node* node)
 }
 
 template <typename T, typename Compare, typename Allocator>
+template <typename NodeAllocator>
 typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::make_node(const T& data)
+bst<T, Compare, Allocator>::copy_tree(bst_node* root, NodeAllocator& alloc)
 {
-    bst_node* node = alloc_traits::allocate(alloc, 1);
-    alloc_traits::construct(alloc, node, data);
-    return node;
+    using traits   = std::allocator_traits<NodeAllocator>;
+    using node_ptr = typename traits::pointer;
+
+    std::stack<bst_node*> parent_copies;
+    bst_node* root_copy = nullptr;
+
+    auto copy_and_connect = [&](bst_node* node) {
+        if (node) {
+
+            node_ptr copy = traits::allocate(alloc, 1);
+            traits::construct(alloc, copy, *static_cast<node_ptr>(node));
+
+            if (node->parent) {
+                bst_node* parent = parent_copies.top();
+                copy->parent     = parent;
+                if (node == node->parent->left) {
+                    parent->left = copy;
+                    if (!node->parent->right)
+                        parent_copies.pop();
+                } else {
+                    parent->right = copy;
+                    parent_copies.pop();
+                }
+            } else
+                root_copy = copy;
+
+            if (node->left || node->right)
+                parent_copies.push(copy);
+        }
+    };
+
+    preorder_visit(root, copy_and_connect);
+
+    return root_copy;
+}
+
+template <typename T, typename Compare, typename Allocator>
+template <typename NodeAllocator>
+void bst<T, Compare, Allocator>::destroy_tree(bst_node* root,
+                                              NodeAllocator& alloc)
+{
+    using traits   = std::allocator_traits<NodeAllocator>;
+    using node_ptr = typename traits::pointer;
+
+    auto destroy = [&](bst_node* node) {
+        traits::destroy(alloc, static_cast<node_ptr>(node));
+        traits::deallocate(alloc, static_cast<node_ptr>(node), 1);
+    };
+
+    if (root)
+        postorder_visit(root, destroy);
 }
 
 template <typename T, typename Compare, typename Allocator>
 typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::copy_node(bst_node* node)
+bst<T, Compare, Allocator>::make_node(const T& data)
 {
-    bst_node* copy = alloc_traits::allocate(alloc, 1);
-    alloc_traits::construct(alloc, copy, *node);
-    return copy;
+    bst_node* node = node_traits::allocate(alloc, 1);
+    node_traits::construct(alloc, node, data);
+    return node;
 }
 
 template <typename T, typename Compare, typename Allocator>
@@ -624,13 +652,6 @@ void bst<T, Compare, Allocator>::erase_double_child_node(bst_node* node,
     transplant(node, replacement);
     replacement->left         = node->left;
     replacement->left->parent = replacement;
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::destroy_node(bst_node* node)
-{
-    alloc_traits::destroy(alloc, node);
-    alloc_traits::deallocate(alloc, node, 1);
 }
 
 template <typename T, typename Compare, typename Allocator>
