@@ -1,72 +1,121 @@
-#ifndef __BALANCED_BST_H__
-#define __BALANCED_BST_H__
+#ifndef BALANCED_BST_H
+#define BALANCED_BST_H
 
 #include "bst.h"
 
-#include <functional>
-#include <memory>
-
-template <typename T, typename Compare = std::less<T>,
+template <typename T,
+          typename Compare   = std::less<T>,
           typename Allocator = std::allocator<T>>
 class balanced_bst : public bst<T, Compare, Allocator>
 {
   private:
-    using bst_node = typename bst<T, Compare, Allocator>::bst_node;
     using bst      = bst<T, Compare, Allocator>;
+    using Sentinel = typename bst::Sentinel;
+    using BstNode  = typename bst::BstNode;
 
   public:
-    balanced_bst() = default;
-    balanced_bst(balanced_bst&& source);
+    balanced_bst()          = default;
     virtual ~balanced_bst() = default;
 
   protected:
-    void left_rotate(bst_node* node);
-    void right_rotate(bst_node* node);
+    struct BalancedBstNode : public BstNode { // NOLINT
+        BalancedBstNode() = default;
 
-    virtual void fixup_insert(bst_node* node) = 0;
-    virtual void fixup_erase(bst_node* node)  = 0;
+        BalancedBstNode(const T&  data,
+                        Sentinel* owner) noexcept(noexcept(BstNode{data,
+                                                                   owner}))
+            : BstNode{data, owner}
+        {
+        }
+
+        BalancedBstNode(const BalancedBstNode& that,
+                        Sentinel* owner) noexcept(noexcept(BstNode{that,
+                                                                   owner}))
+            : BstNode{that, owner}
+        {
+        }
+
+        void left_rotate() noexcept
+        {
+            /*
+             * example: T is this node and P is T's parent (if any)
+             *
+             * notice how the result is that the right subtree rooted at B (if
+             * any) is moved up a level; the height of the portion of the tree
+             * that is actually shown does not change, but the height of the
+             * nodes of the right subtree rooted at B will be one less as long
+             * as they exist
+             *
+             *                 ...                ...
+             *                  |                  |
+             *                  P                  P
+             *                 / \                / \
+             *                T  ...             B  ...
+             *               / \        -->     / \
+             *              A   B              T  ...
+             *                 / \            / \
+             *                C  ...         A   C
+             */
+
+            // we are "rotating" T and its right child, B, to the left
+            BstNode* child = this->right;
+
+            // T will become B's left child (because T is less than B), however
+            // we can't make C the right child of B (because C is less than B)
+            //
+            // but T is less than C so we can make it T's right child (the
+            // position formerly held by B)
+            this->right = child->left;
+            if (child->left != nullptr) child->left->parent = this;
+
+            // move B to T's old position
+            child->parent = this->parent;
+            // NOTE: we have to consider the parent of T and it is possible that
+            // T is the root
+            if (this->parent == nullptr) {
+                this->owner->root = child;
+            } else if (this == this->parent->left) {
+                this->parent->left = child;
+            } else {
+                this->parent->right = child;
+            }
+
+            // make T the left child of B
+            child->left  = this;
+            this->parent = child;
+        }
+
+        void right_rotate() noexcept
+        {
+            // SEE: the explanation provided for left_rotate; this situation is
+            // symmetric
+
+            BstNode* child = this->left;
+
+            this->left = child->right;
+            if (child->right != nullptr) child->right->parent = this;
+
+            child->parent = this->parent;
+            if (this->parent == nullptr) {
+                this->owner->root = child;
+            } else if (this == this->parent->right) {
+                this->parent->right = child;
+            } else {
+                this->parent->left = child;
+            }
+
+            child->right = this;
+            this->parent = child;
+        }
+    };
+
+    virtual void post_insert(BalancedBstNode* node) = 0;
+    virtual void post_erase(BalancedBstNode* node)  = 0;
+
+    explicit balanced_bst(Sentinel* sentinel)
+        : bst{sentinel}
+    {
+    }
 };
 
-template <typename T, typename Compare, typename Allocator>
-balanced_bst<T, Compare, Allocator>::balanced_bst(balanced_bst&& source)
-    : bst(source)
-{
-}
-
-template <typename T, typename Compare, typename Allocator>
-void balanced_bst<T, Compare, Allocator>::left_rotate(bst_node* node)
-{
-    bst_node* child = node->right;
-    node->right     = child->left;
-    if (child->left)
-        child->left->parent = node;
-    child->parent = node->parent;
-    if (!node->parent)
-        bst::root = child;
-    else if (node == node->parent->left)
-        node->parent->left = child;
-    else
-        node->parent->right = child;
-    child->left  = node;
-    node->parent = child;
-}
-
-template <typename T, typename Compare, typename Allocator>
-void balanced_bst<T, Compare, Allocator>::right_rotate(bst_node* node)
-{
-    bst_node* child = node->left;
-    node->left      = child->right;
-    if (child->right)
-        child->right->parent = node;
-    child->parent = node->parent;
-    if (!node->parent)
-        bst::root = child;
-    else if (node == node->parent->right)
-        node->parent->right = child;
-    else
-        node->parent->left = child;
-    child->right = node;
-    node->parent = child;
-}
-
-#endif
+#endif // BALANCED_BST_H

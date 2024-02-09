@@ -1,33 +1,356 @@
-#ifndef __BST_H__
-#define __BST_H__
+#ifndef BST_H
+#define BST_H
 
 #include <algorithm>
+#include <cstddef>
 #include <deque>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <stack>
+#include <utility>
 
-#ifndef _P_UNUSED_
-#define _P_UNUSED_ __attribute__((unused))
-#endif
-
-template <typename T, typename Compare = std::less<T>,
+template <typename T,
+          typename Compare   = std::less<T>,
           typename Allocator = std::allocator<T>>
 class bst
 {
   protected:
-    using value_traits = std::allocator_traits<Allocator>;
+    struct Sentinel;
+    struct BstNode;
 
-    struct bst_node;
+    using NodeAllocator = typename std::allocator_traits<
+        Allocator>::template rebind_alloc<BstNode>;
+    using NodeTraits = std::allocator_traits<NodeAllocator>;
 
-    class const_bst_node_iterator;
-    class mutable_iterator;
+    // base class for Sentinel and BstNode
+    struct Node { // NOLINT
+        Node() = default;
 
-    bst_node* root = nullptr;
+        explicit Node(Sentinel* owner) noexcept
+            : owner{owner}
+        {
+        }
 
-    std::size_t size_ = 0;
+        [[nodiscard]] inline bool is_data() const noexcept
+        {
+            return this != owner;
+        }
+
+        const Node* successor() const noexcept
+        {
+            if (is_data()) [[likely]] {
+                auto* node = static_cast<const BstNode*>(this);
+
+                // if there is a right subtree, then we return the minumum of
+                // that subtree; as that is the next in-order node
+                if (node->right != nullptr) return node->right->min();
+
+                // otherwise we must traverse up the tree until we reach the
+                // root of a left subtree; we have exhasted the traversal of
+                // that subtree, so the next in-order node is it's root
+                BstNode* parent = node->parent;
+
+                while (parent != nullptr && node == parent->right) {
+                    node   = parent;
+                    parent = parent->parent;
+                }
+
+                // if we have exhasted all the nodes then we return the Sentinel
+                if (parent == nullptr) return owner;
+
+                return parent;
+            }
+
+            // otherwise, if this node is the Sentinel then the next node should
+            // be the first in-order node (i.e., the minimum)
+            return static_cast<const Sentinel*>(this)->min;
+        }
+
+        const Node* predecessor() const noexcept
+        {
+            // SEE: the notes in successor; the explanation for this method is
+            // symmetric to the one provided for that method
+            if (is_data()) [[likely]] {
+                auto* node = static_cast<const BstNode*>(this);
+
+                if (node->left) return node->left->max();
+
+                BstNode* parent = node->parent;
+
+                while (parent != nullptr && node == parent->left) {
+                    node   = parent;
+                    parent = parent->parent;
+                }
+
+                if (parent == nullptr) return owner;
+
+                return parent;
+            }
+
+            return static_cast<const Sentinel*>(this)->max;
+        }
+
+        Sentinel* owner{nullptr};
+    };
+
+    /* this class contains the root of the tree, but also acts as the
+     * past-the-end node
+     *
+     * actual tree nodes shall keep a reference to the Sentinel that contains
+     * its root so that it can be iterated to
+     *
+     * also it holds reference to the min and max nodes of the tree so that they
+     * may subsequently be iterated to */
+    struct Sentinel : public Node { // NOLINT
+        Sentinel() noexcept
+            : Node{this}
+        {
+        }
+
+        virtual ~Sentinel() = default;
+
+        virtual BstNode* make_node(const T& data)       = 0;
+        virtual BstNode* make_node(const BstNode& node) = 0;
+        virtual void     destroy_node(BstNode* node)    = 0;
+
+        void copy(Sentinel* that)
+        {
+            if (that->root == nullptr) return;
+
+            std::stack<BstNode*> parents;
+
+            auto copy_node = [this](BstNode*              node,
+                                    Sentinel*             that,
+                                    std::stack<BstNode*>& parents) {
+                auto* copy = this->make_node(*node);
+
+                if (node != that->root) [[likely]] {
+                    BstNode* parent = parents.top();
+
+                    copy->parent = parent;
+
+                    if (node == node->parent->left) {
+                        parent->left = copy;
+                        if (node->parent->right == nullptr) {
+                            parents.pop(); // pop if done, otherwise a right
+                                           // child exists
+                        }
+                    } else {
+                        parent->right = copy;
+                        parents.pop();
+                    }
+                } else {
+                    this->root = copy;
+                }
+
+                if (that->is_min(node)) [[unlikely]] {
+                    this->update_min(copy);
+                }
+
+                if (that->is_max(node)) [[unlikely]] {
+                    this->update_max(copy);
+                }
+
+                // only add internal nodes to the parent stack
+                if (node->left != nullptr || node->right != nullptr) {
+                    parents.push(copy);
+                }
+            };
+
+            preorder_visit(that->root, copy_node, that, parents);
+            this->size = that->size;
+        }
+
+        void clear()
+        {
+            postorder_visit(this->root, [this](BstNode* node) {
+                this->destroy_node(node);
+            });
+            reset();
+            size = 0;
+        }
+
+        inline void update_all(BstNode* node) noexcept // NOLINT
+        {
+            this->root = node;
+            this->min  = node;
+            this->max  = node;
+        }
+
+        inline bool is_min(Node* node) { return node == this->min; }
+        inline void update_min(Node* min) { this->min = min; }
+        inline bool is_max(Node* node) { return node == this->max; }
+        inline void update_max(Node* max) { this->max = max; }
+
+        const BstNode* find(const T& data) const
+            noexcept(noexcept(Compare{}(data, data)))
+        {
+            return this->root->find(data);
+        }
+
+        void reset() noexcept
+        {
+            root = nullptr;
+            min  = this;
+            max  = this;
+        }
+
+        BstNode* root{nullptr};
+
+        Node* min{this};
+        Node* max{this};
+
+        size_t size{0};
+    };
+
+    // struct FinalSentinel : public BstSentinel<NodeAllocator>;
+
+    template <typename NodeAllocator>
+    struct BstSentinel : public NodeAllocator, public Sentinel { // NOLINT
+        using NodeTraits = std::allocator_traits<NodeAllocator>;
+        using NodeType   = typename NodeTraits::value_type;
+
+        ~BstSentinel()
+        {
+            postorder_visit(this->root, [this](BstNode* node) {
+                this->destroy_node(node);
+            });
+        }
+
+        BstNode* make_node(const T& data) override
+        {
+            auto* node = NodeTraits::allocate(*this, 1);
+            NodeTraits::construct(*this,
+                                  static_cast<NodeType*>(node),
+                                  data,
+                                  this);
+            return node;
+        }
+
+        BstNode* make_node(const BstNode& node) override
+        {
+            auto* copy = NodeTraits::allocate(*this, 1);
+            NodeTraits::construct(*this,
+                                  copy,
+                                  static_cast<const NodeType&>(node),
+                                  this);
+            return copy;
+        }
+
+        void destroy_node(BstNode* node) override
+        {
+            NodeTraits::destroy(*this, node);
+            NodeTraits::deallocate(*this, static_cast<NodeType*>(node), 1);
+        }
+    };
+
+    struct BstNode : public Node { // NOLINT
+        BstNode() = default;
+
+        BstNode(const T& data, Sentinel* owner) noexcept(noexcept(T{data}))
+            : Node{owner}
+            , data{data}
+        {
+        }
+
+        BstNode(const BstNode& that,
+                Sentinel*      owner) noexcept(noexcept(T{that.data}))
+            : Node{owner}
+            , data{that.data}
+        {
+        }
+
+        BstNode* min() noexcept
+        {
+            BstNode* node{this};
+            while (node->left != nullptr) node = node->left;
+            return node;
+        }
+
+        BstNode* max() noexcept
+        {
+            BstNode* node{this};
+            while (node->right != nullptr) node = node->right;
+            return node;
+        }
+
+        [[nodiscard]] size_t height() const noexcept
+        {
+            std::deque<const BstNode*> queue;
+            queue.push_back(this);
+
+            size_t h = 0;
+
+            while (!queue.empty()) {
+
+                size_t nodes = queue.size();
+
+                while (nodes-- > 0) {
+                    const BstNode* node = queue.front();
+                    queue.pop_front();
+
+                    if (node->left != nullptr) queue.push_back(node->left);
+                    if (node->right != nullptr) queue.push_back(node->right);
+                }
+
+                ++h;
+            }
+
+            return --h;
+        }
+
+        const BstNode* find(const T& data) const
+            noexcept(noexcept(Compare{}(data, data)))
+        {
+            const BstNode* node{this};
+
+            auto not_equal = [](const T& lhs, const T& rhs) noexcept(
+                                 noexcept(Compare{}(lhs, rhs))) {
+                return Compare{}(lhs, rhs) != Compare{}(rhs, lhs);
+            };
+
+            while (node != nullptr && not_equal(data, node->data)) {
+                if (Compare{}(data, node->data)) {
+                    node = node->left;
+                } else {
+                    node = node->right;
+                }
+            }
+            return node;
+        }
+
+        inline void reset() noexcept
+        {
+            parent = nullptr;
+            left   = nullptr;
+            right  = nullptr;
+        }
+
+        friend bool operator<(const BstNode& lhs, const BstNode& rhs) noexcept(
+            noexcept(Compare{}(lhs.data, rhs.data)))
+        {
+            return Compare{}(lhs.data, rhs.data);
+        }
+
+        friend bool operator!=(const BstNode& lhs, const BstNode& rhs) noexcept(
+            noexcept(Compare{}(lhs.data, rhs.data)))
+        {
+            return lhs.data < rhs.data != rhs.data < lhs.data;
+        }
+
+        T data;
+
+        BstNode* parent{nullptr};
+        BstNode* left{nullptr};
+        BstNode* right{nullptr};
+
+        const T* get() const noexcept { return std::addressof(data); }
+    };
+
+    class ConstBstNodeIterator;
+    class MutableIterator;
 
   public:
     using value_type = T;
@@ -37,792 +360,513 @@ class bst
     using difference_type = std::ptrdiff_t;
     using value_compare   = Compare;
 
-    using reference       = value_type&;
-    using const_reference = const value_type&;
+    using reference       = const value_type&;
+    using const_reference = reference;
 
-    using pointer       = typename value_traits::pointer;
-    using const_pointer = typename value_traits::const_pointer;
+    using pointer = typename std::allocator_traits<Allocator>::pointer;
+    using const_pointer =
+        typename std::allocator_traits<Allocator>::const_pointer;
 
-    using const_iterator         = const_bst_node_iterator;
+    using const_iterator         = ConstBstNodeIterator;
     using iterator               = const_iterator;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using reverse_iterator       = const_reverse_iterator;
 
-    using position = mutable_iterator;
-
-    bst() = default;
-    bst(const bst& source);
-    bst(bst&& source);
-    virtual ~bst();
-
-    allocator_type get_allocator() const noexcept;
-
-    bool empty() const noexcept;
-    size_type size() const noexcept;
-
-    size_type height() const noexcept;
-
-    void clear() noexcept;
-
-    iterator insert(const_iterator pos, const T& data);
-    iterator insert(const T& data);
-
-    template <typename InputIterator>
-    void insert(InputIterator first, InputIterator last);
-
-    void insert(std::initializer_list<value_type> ilist);
-
-    iterator erase(const_iterator pos);
-
-    iterator modify(const_iterator pos, const T& data);
-
-    iterator find(const T& data) const;
-
-    position position_of(const T& data);
-
-    iterator begin() const;
-    iterator end() const;
-
-    reverse_iterator rbegin() const;
-    reverse_iterator rend() const;
+    using position = MutableIterator;
 
   protected:
-    template <typename Visitor>
-    static void preorder_visit(bst_node* node, Visitor visit);
-    template <typename Visitor>
-    static void inorder_visit(bst_node* node, Visitor visit);
-    template <typename Visitor>
-    static void postorder_visit(bst_node* node, Visitor visit);
+    /* all statndard input iteartors returned by the methods of bst are "const"
+     *
+     * this is because allowing the arbitrary modification of data could lead to
+     * the bst contract being violated */
+    class ConstBstNodeIterator
+    {
+        friend class bst;
 
-    static size_type subtree_depth(bst_node* node);
+      private:
+        using Self = ConstBstNodeIterator;
 
-    static bst_node* subtree_find(bst_node* node, const T& data);
+      public:
+        using iterator_category = std::bidirectional_iterator_tag;
+        using value_type        = T;
+        using difference_type   = std::size_t;
 
-    static bst_node* subtree_min(bst_node* node);
-    static bst_node* subtree_max(bst_node* node);
+        using reference = const T&;
+        using pointer   = const T*;
 
-    static bst_node* subtree_succ(bst_node* node);
-    static bst_node* subtree_pred(bst_node* node);
+        explicit ConstBstNodeIterator(const Node* node) noexcept
+            : node_{node}
+        {
+        }
+
+        ConstBstNodeIterator(const ConstBstNodeIterator& that) noexcept
+            : node_{that.node_}
+        {
+        }
+
+        ConstBstNodeIterator& operator=(const Self& that) noexcept
+        {
+            if (this != &that) {
+                node_ = that.node_;
+            }
+            return *this;
+        }
+
+        const T& operator*() const noexcept
+        {
+            return *static_cast<const BstNode*>(node_)->get();
+        }
+
+        const T* operator->() const noexcept
+        {
+            return static_cast<const BstNode*>(node_)->get();
+        }
+
+        Self& operator++() noexcept
+        {
+            node_ = node_->successor();
+            return *this;
+        }
+
+        Self operator++(int) noexcept
+        {
+            Self tmp{*this};
+            ++*this;
+            return tmp;
+        }
+
+        Self& operator--() noexcept
+        {
+            node_ = node_->predecessor();
+            return *this;
+        }
+
+        Self operator--(int) noexcept
+        {
+            Self tmp{*this};
+            --*this;
+            return tmp;
+        }
+
+        friend bool operator==(const Self& lhs, const Self& rhs) noexcept
+        {
+            return lhs.node_ == rhs.node_;
+        }
+
+        friend bool operator!=(const Self& lhs, const Self& rhs) noexcept
+        {
+            return !(lhs.node_ == rhs.node_);
+        }
+
+      private:
+        const Node* node_;
+
+        inline Node* extract() noexcept
+        {
+            // const_cast is OK; Node(s) are never actually declared const
+            return const_cast<Node*>(node_);
+        }
+    };
+
+    class MutableIterator
+    {
+        friend class bst;
+
+      public:
+        using iterator_category = std::output_iterator_tag;
+        using value_type        = void;
+        using difference_type   = std::ptrdiff_t;
+        using pointer           = void;
+        using reference         = void;
+
+        MutableIterator& operator++() noexcept { return this; }
+
+        MutableIterator& operator++(int) noexcept { return this; }
+
+        MutableIterator& operator=(const T& data)
+        {
+            if (iter_ == t_->end()) {
+                iter_ = t_->insert(iter_, data);
+            } else {
+                iter_ = t_->modify(iter_, data);
+            }
+            return *this;
+        }
+
+        MutableIterator& operator=(std::nullptr_t) noexcept
+        {
+            const_iterator old{iter_};
+            ++iter_;
+            t_->erase(old);
+            return *this;
+        }
+
+      private:
+        bst*     t_;
+        iterator iter_;
+
+        // only bst methods can construct MutableIterator
+        MutableIterator(bst* t, iterator iter)
+            : t_{t}
+            , iter_{iter}
+        {
+        }
+    };
 
     template <typename NodeAllocator>
-    static bst_node* copy_tree(bst_node* root, NodeAllocator& alloc);
+    void set_alloc(BstSentinel<NodeAllocator>* alloc) noexcept
+    {
+        sentinel_ = alloc;
+    }
 
-    template <typename NodeAllocator>
-    static void destroy_tree(bst_node* root, NodeAllocator& alloc);
-
-    virtual bst_node* make_node(const T& data);
-
-    virtual void base_insert(bst_node* node);
-
-    void transplant(bst_node* u, bst_node* v);
-
-    inline virtual void erase_single_child_node(bst_node* node,
-                                                bst_node* replacement);
-    inline virtual void erase_double_child_node(bst_node* node,
-                                                bst_node* replacement);
-
-    virtual void base_erase(bst_node* node);
-
-  private:
-    using node_alloc  = typename value_traits::template rebind_alloc<bst_node>;
-    using node_traits = std::allocator_traits<node_alloc>;
-
-    node_alloc alloc;
-};
-
-template <typename T, typename Compare, typename Allocator>
-struct bst<T, Compare, Allocator>::bst_node {
-    T data;
-    bst_node* parent = nullptr;
-    bst_node* left   = nullptr;
-    bst_node* right  = nullptr;
-
-    bst_node() = default;
-    bst_node(const T& data);
-    bst_node(const bst_node& source);
-
-    bool operator<(const bst_node& rhs) const;
-    bool operator!=(const bst_node& rhs) const;
-};
-
-template <typename T, typename Compare, typename Allocator>
-class bst<T, Compare, Allocator>::const_bst_node_iterator
-{
   public:
-    using iterator_category = std::bidirectional_iterator_tag;
-    using value_type        = typename bst<T, Compare, Allocator>::value_type;
-    using difference_type   = std::size_t;
+    bst() { set_alloc(new BstSentinel<NodeAllocator>{}); }
 
-    using reference = value_type&;
-    using pointer   = value_type*;
+    bst(const bst& that)
+        : bst{}
+    {
+        sentinel_->copy(that.sentinel_);
+    }
 
-    const_bst_node_iterator(bst_node* node);
-    const_bst_node_iterator(const const_bst_node_iterator& source);
+    bst(bst&& that) noexcept
+        : sentinel_{std::exchange(that.sentinel_, nullptr)}
+    {
+    }
 
-    reference operator*();
-    pointer operator->();
+    virtual ~bst() { delete sentinel_; }
 
-    const_bst_node_iterator& operator++();
-    const_bst_node_iterator operator++(int);
-    const_bst_node_iterator& operator--();
-    const_bst_node_iterator operator--(int);
+    bst& operator=(const bst& that)
+    {
+        if (this != &that) {
+            sentinel_->clear();
+            sentinel_->copy(that.sentinel_);
+        }
 
-    bool operator==(const const_bst_node_iterator& rhs) const;
-    bool operator!=(const const_bst_node_iterator& rhs) const;
+        return *this;
+    }
 
-  private:
-    bst_node* node;
-    bool before_start = false;
-    bool after_end    = false;
-    bst_node* next    = nullptr;
+    bst& operator=(bst&& that) noexcept
+    {
+        if (this != &that) {
+            sentinel_->clear();
+            sentinel_ = std::exchange(that.sentinel_, nullptr);
+        }
 
-    friend class bst;
-};
+        return *this;
+    }
 
-template <typename T, typename Compare, typename Allocator>
-class bst<T, Compare, Allocator>::mutable_iterator
-{
-  public:
-    using iterator_category = std::output_iterator_tag;
-    using value_type        = void;
-    using difference_type   = std::ptrdiff_t;
-    using pointer           = void;
-    using reference         = void;
+    allocator_type get_allocator() const noexcept { return allocator_type{}; }
+    [[nodiscard]] bool   empty() const noexcept { return begin() == end(); }
+    [[nodiscard]] size_t size() const noexcept { return sentinel_->size; }
 
-    mutable_iterator(bst* t, iterator iter);
+    [[nodiscard]] size_t height() const noexcept
+    {
+        return sentinel_->root->height();
+    }
 
-    mutable_iterator& operator++();
-    mutable_iterator& operator++(int);
+    void clear() { sentinel_->clear(); }
 
-    mutable_iterator& operator=(const bst::value_type& data);
+    iterator insert(const_iterator, const T& data) { return insert(data); }
 
-  private:
-    bst* t;
-    iterator iter;
-};
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::bst(const bst& source)
-{
-    root  = copy_tree(source.root, alloc);
-    size_ = source.size_;
-}
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::bst(bst&& source)
-    : root(std::move(source.root)), size_(std::move(source.size))
-{
-}
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::~bst()
-{
-    destroy_tree(root, alloc);
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::allocator_type
-bst<T, Compare, Allocator>::get_allocator() const noexcept
-{
-    return allocator_type{};
-}
-
-template <typename T, typename Compare, typename Allocator>
-bool bst<T, Compare, Allocator>::empty() const noexcept
-{
-    return !root;
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::size_type
-bst<T, Compare, Allocator>::size() const noexcept
-{
-    return size_;
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::size_type
-bst<T, Compare, Allocator>::height() const noexcept
-{
-    return subtree_depth(root);
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::clear() noexcept
-{
-    destroy_tree(root, alloc);
-    root  = nullptr; // otherwise might contain grabage data
-    size_ = 0;
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::insert(_P_UNUSED_ const_iterator pos, const T& data)
-{
-    return insert(data);
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::insert(const T& data)
-{
-    bst_node* node = make_node(data);
-    base_insert(node);
-
-    ++size_;
-
-    return iterator{node};
-}
-
-template <typename T, typename Compare, typename Allocator>
-template <typename InputIterator>
-void bst<T, Compare, Allocator>::insert(InputIterator first, InputIterator last)
-{
-    std::for_each(first, last, [&](const value_type& data) { insert(data); });
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::insert(std::initializer_list<value_type> ilist)
-{
-    insert(ilist.begin(), ilist.end());
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::erase(const_iterator pos)
-{
-    bst_node* node = pos.node;
-    bst_node* next = subtree_succ(node);
-    base_erase(node);
-
-    --size_;
-
-    if (next)
-        return iterator{next};
-    else
-        return end();
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::modify(const_iterator pos, const T& data)
-{
-    bst_node* node = make_node(data);
-    iterator iter(pos);
-    if (pos.node != node) {
-        base_erase(pos.node);
+    iterator insert(const T& data)
+    {
+        BstNode* node = sentinel_->make_node(data);
         base_insert(node);
-        iter = iterator{node};
-    }
-    return iter;
-}
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::find(const T& data) const
-{
-    bst_node* node = subtree_find(root, data);
-    return iterator{node};
-}
+        ++sentinel_->size;
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::position
-bst<T, Compare, Allocator>::position_of(const T& data)
-{
-    iterator pos = find(data);
-    return position{this, pos};
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::begin() const
-{
-    return iterator{subtree_min(root)};
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::iterator
-bst<T, Compare, Allocator>::end() const
-{
-    return ++iterator{subtree_max(root)};
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::reverse_iterator
-bst<T, Compare, Allocator>::rbegin() const
-{
-    return std::make_reverse_iterator(end());
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::reverse_iterator
-bst<T, Compare, Allocator>::rend() const
-{
-    return std::make_reverse_iterator(begin());
-}
-
-template <typename T, typename Compare, typename Allocator>
-template <typename Visitor>
-void bst<T, Compare, Allocator>::preorder_visit(bst_node* node, Visitor visit)
-{
-    std::stack<bst_node*> traversal;
-
-    if (node)
-        traversal.push(node);
-
-    while (!traversal.empty()) {
-        bst_node* cursor = traversal.top();
-        traversal.pop();
-
-        visit(cursor);
-
-        if (cursor->right)
-            traversal.push(cursor->right);
-        if (cursor->left)
-            traversal.push(cursor->left);
-    }
-}
-
-template <typename T, typename Compare, typename Allocator>
-template <typename Visitor>
-void bst<T, Compare, Allocator>::inorder_visit(bst_node* node, Visitor visit)
-{
-    bst_node* cursor = subtree_min(node);
-    while (cursor) {
-        visit(cursor);
-        cursor = subtree_succ(cursor);
-    }
-}
-
-template <typename T, typename Compare, typename Allocator>
-template <typename Visitor>
-void bst<T, Compare, Allocator>::postorder_visit(bst_node* node, Visitor visit)
-{
-    std::stack<bst_node*> setup;
-    std::stack<bst_node*> traversal;
-
-    if (node)
-        setup.push(node);
-
-    while (!setup.empty()) {
-        bst_node* cursor = setup.top();
-        setup.pop();
-
-        traversal.push(cursor);
-
-        if (cursor->right)
-            setup.push(cursor->right);
-
-        if (cursor->left)
-            setup.push(cursor->left);
+        return iterator{node};
     }
 
-    while (!traversal.empty()) {
-        visit(traversal.top());
-        traversal.pop();
+    template <typename InputIterator>
+    void insert(InputIterator first, InputIterator last)
+    {
+        std::for_each(first, last, [this](const T& data) {
+            this->insert(data);
+        });
     }
-}
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::size_type
-bst<T, Compare, Allocator>::subtree_depth(bst_node* node)
-{
-    std::deque<bst_node*> queue;
-    queue.push_back(node);
+    void insert(std::initializer_list<T> in) { insert(in.begin(), in.end()); }
 
-    size_type h = 0;
+    iterator erase(const_iterator pos)
+    {
+        auto*    node = static_cast<BstNode*>(pos.extract());
+        iterator next = ++pos;
+        base_erase(node);
 
-    while (!queue.empty()) {
+        --sentinel_->size;
 
-        size_type level_population = queue.size();
-
-        while (level_population--) {
-            bst_node* processing = queue.front();
-            queue.pop_front();
-
-            if (processing->left)
-                queue.push_back(processing->left);
-
-            if (processing->right)
-                queue.push_back(processing->right);
+        if (sentinel_->is_min(node)) [[unlikely]] {
+            sentinel_->update_min(node->parent);
         }
 
-        ++h;
+        if (sentinel_->is_max(node)) [[unlikely]] {
+            sentinel_->update_max(node->parent);
+        }
+
+        sentinel_->destroy_node(node);
+
+        return next;
     }
 
-    return --h;
-}
+    iterator modify(const_iterator pos, const T& data)
+    {
+        iterator iter{pos};
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::subtree_find(bst_node* node, const T& data)
-{
-    bst_node rhs(data);
+        auto not_equal = [](const T& lhs, const T& rhs) noexcept(
+                             noexcept(Compare{}(data, data))) {
+            return Compare{}(lhs, rhs) != Compare{}(rhs, lhs);
+        };
 
-    while (node && *node != rhs) {
-        if (rhs < *node)
-            node = node->left;
-        else
-            node = node->right;
+        if (not_equal(*pos, data)) {
+            auto* node = static_cast<BstNode*>(pos.extract());
+
+            base_erase(node);
+            node->reset();
+            node->data = data;
+            base_insert(node);
+
+            iter = iterator{node};
+        }
+
+        return iter;
     }
-    return node;
-}
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::subtree_min(bst_node* node)
-{
-    while (node->left)
-        node = node->left;
-    return node;
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::subtree_max(bst_node* node)
-{
-    while (node->right)
-        node = node->right;
-    return node;
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::subtree_succ(bst_node* node)
-{
-    if (!node)
-        return nullptr;
-    if (node->right)
-        return subtree_min(node->right);
-    bst_node* parent = node->parent;
-    while (parent && node == parent->right) {
-        node   = parent;
-        parent = parent->parent;
+    iterator find(const T& data) const noexcept
+    {
+        const BstNode* node = sentinel_->find(data);
+        if (node == nullptr) return iterator{sentinel_};
+        return iterator{node};
     }
-    return parent;
-}
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::subtree_pred(bst_node* node)
-{
-    if (!node)
-        return nullptr;
-    if (node->left)
-        return subtree_max(node->left);
-    bst_node* parent = node->parent;
-    while (parent && node == parent->left) {
-        node   = parent;
-        parent = parent->parent;
+    position position_of(const T& data) noexcept
+    {
+        iterator pos = find(data);
+        return position{this, pos};
     }
-    return parent;
-}
 
-template <typename T, typename Compare, typename Allocator>
-template <typename NodeAllocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::copy_tree(bst_node* root, NodeAllocator& alloc)
-{
-    using traits   = std::allocator_traits<NodeAllocator>;
-    using node_ptr = typename traits::pointer;
+    iterator begin() noexcept { return iterator{sentinel_->min}; }
 
-    std::stack<bst_node*> parent_copies;
-    bst_node* root_copy = nullptr;
+    const_iterator cbegin() const noexcept
+    {
+        return const_iterator{sentinel_->min};
+    }
 
-    auto copy_and_connect = [&](bst_node* node) {
+    const_iterator begin() const noexcept { return cbegin(); }
+
+    iterator       end() noexcept { return iterator{sentinel_}; }
+    const_iterator cend() const noexcept { return const_iterator{sentinel_}; }
+    const_iterator end() const noexcept { return cend(); }
+
+    reverse_iterator rbegin() noexcept
+    {
+        return std::make_reverse_iterator(end());
+    }
+
+    const_reverse_iterator crbegin() const noexcept
+    {
+        return std::make_reverse_iterator(cend());
+    }
+
+    const_reverse_iterator rbegin() const noexcept { return crbegin(); }
+
+    reverse_iterator rend() noexcept
+    {
+        return std::make_reverse_iterator(begin());
+    }
+
+    const_reverse_iterator crend() const noexcept
+    {
+        return std::make_reverse_iterator(begin());
+    }
+
+    const_reverse_iterator rend() const noexcept { return crend(); }
+
+    template <typename Visitor, typename... Args>
+    void preorder_from(const_iterator it, Visitor&& visit, Args&&... args) const
+    {
+        preorder_visit(it.extract(),
+                       &bst::data_visit,
+                       std::forward<Visitor>(visit),
+                       std::forward<Args>(args)...);
+    }
+
+    template <typename Visitor, typename... Args>
+    void inorder_from(const_iterator it, Visitor&& visit, Args&&... args) const
+    {
+        inorder_visit(it.extract(),
+                      &bst::data_visit,
+                      std::forward<Visitor>(visit),
+                      std::forward<Args>(args)...);
+    }
+
+    template <typename Visitor, typename... Args>
+    void
+    postorder_from(const_iterator it, Visitor&& visit, Args&&... args) const
+    {
+        postorder_visit(it.extract(),
+                        &bst::data_visit,
+                        std::forward<Visitor>(visit),
+                        std::forward<Args>(args)...);
+    }
+
+  protected:
+    template <typename Visitor, typename... Args>
+    static void preorder_visit(BstNode* node, Visitor&& visit, Args&&... args)
+    {
+        std::stack<BstNode*> stack;
+
         if (node) {
-
-            node_ptr copy = traits::allocate(alloc, 1);
-            traits::construct(alloc, copy, *static_cast<node_ptr>(node));
-
-            if (node->parent) {
-                bst_node* parent = parent_copies.top();
-                copy->parent     = parent;
-                if (node == node->parent->left) {
-                    parent->left = copy;
-                    if (!node->parent->right)
-                        parent_copies.pop();
-                } else {
-                    parent->right = copy;
-                    parent_copies.pop();
-                }
-            } else
-                root_copy = copy;
-
-            if (node->left || node->right)
-                parent_copies.push(copy);
+            stack.push(node);
         }
-    };
 
-    preorder_visit(root, copy_and_connect);
+        while (!stack.empty()) {
+            BstNode* cursor = stack.top();
+            stack.pop();
 
-    return root_copy;
-}
+            std::forward<Visitor>(visit)(cursor, std::forward<Args>(args)...);
 
-template <typename T, typename Compare, typename Allocator>
-template <typename NodeAllocator>
-void bst<T, Compare, Allocator>::destroy_tree(bst_node* root,
-                                              NodeAllocator& alloc)
-{
-    using traits   = std::allocator_traits<NodeAllocator>;
-    using node_ptr = typename traits::pointer;
-
-    auto destroy = [&](bst_node* node) {
-        traits::destroy(alloc, static_cast<node_ptr>(node));
-        traits::deallocate(alloc, static_cast<node_ptr>(node), 1);
-    };
-
-    if (root)
-        postorder_visit(root, destroy);
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::bst_node*
-bst<T, Compare, Allocator>::make_node(const T& data)
-{
-    bst_node* node = node_traits::allocate(alloc, 1);
-    node_traits::construct(alloc, node, data);
-    return node;
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::base_insert(bst_node* node)
-{
-    bst_node* parent = nullptr;
-    bst_node* cursor = root;
-    while (cursor) {
-        parent = cursor;
-        if (*node < *parent)
-            cursor = cursor->left;
-        else
-            cursor = cursor->right;
-    }
-    node->parent = parent;
-    if (!parent)
-        root = node;
-    else if (*node < *parent)
-        parent->left = node;
-    else
-        parent->right = node;
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::transplant(bst_node* u, bst_node* v)
-{
-    // NOTE: this method only takes care of wiring v into the position that u
-    // currently holds (whatever happens to u is up to the caller)
-
-    // u is the root
-    if (!u->parent)
-        root = v;
-
-    // u is the left child of its parent
-    else if (u == u->parent->left)
-        // replace the subtree at u with the subtree at v
-        u->parent->left = v;
-
-    // u is the right child of its parent
-    else
-        u->parent->right = v;
-
-    // ensure the symmetry of the child-parent relationship (i.e., the parent
-    // of v must now be the original parent of u now that v is the child of
-    // this parent)
-    if (v)
-        v->parent = u->parent;
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::erase_single_child_node(bst_node* node,
-                                                         bst_node* replacement)
-{
-    transplant(node, replacement);
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::erase_double_child_node(bst_node* node,
-                                                         bst_node* replacement)
-{
-    if (node != replacement->parent) {
-        transplant(replacement, replacement->right);
-        replacement->right         = node->right;
-        replacement->right->parent = replacement;
-    }
-
-    transplant(node, replacement);
-    replacement->left         = node->left;
-    replacement->left->parent = replacement;
-}
-
-template <typename T, typename Compare, typename Allocator>
-void bst<T, Compare, Allocator>::base_erase(bst_node* node)
-{
-    // node has no left child (and perhaps no right child as well)
-    if (!node->left)
-        erase_single_child_node(node, node->right);
-
-    // node has no right child
-    else if (!node->right)
-        erase_single_child_node(node, node->left);
-
-    // node has both a left and right child
-    else {
-        bst_node* successor = subtree_min(node->right);
-        erase_double_child_node(node, successor);
-    }
-}
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::bst_node::bst_node(const T& data) : data(data)
-{
-}
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::bst_node::bst_node(const bst_node& source)
-    : data(source.data)
-{
-}
-
-template <typename T, typename Compare, typename Allocator>
-bool bst<T, Compare, Allocator>::bst_node::operator<(const bst_node& rhs) const
-{
-    return value_compare{}(data, rhs.data);
-}
-
-template <typename T, typename Compare, typename Allocator>
-bool bst<T, Compare, Allocator>::bst_node::operator!=(const bst_node& rhs) const
-{
-    return value_compare{}(data, rhs.data) != value_compare{}(rhs.data, data);
-}
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::const_bst_node_iterator::const_bst_node_iterator(
-    bst_node* node)
-    : node(node)
-{
-}
-
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::const_bst_node_iterator::const_bst_node_iterator(
-    const const_bst_node_iterator& source)
-    : node(source.node), before_start(source.before_start),
-      after_end(source.after_end), next(source.next)
-{
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::const_bst_node_iterator::reference
-bst<T, Compare, Allocator>::const_bst_node_iterator::operator*()
-{
-    return node->data;
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::const_bst_node_iterator::pointer
-bst<T, Compare, Allocator>::const_bst_node_iterator::operator->()
-{
-    return std::addressof(node->data);
-}
-
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::const_bst_node_iterator&
-bst<T, Compare, Allocator>::const_bst_node_iterator::operator++()
-{
-    if (before_start) {
-        node         = next;
-        before_start = false;
-    } else {
-        bst_node* successor = subtree_succ(node);
-        if (!(successor || after_end)) {
-            after_end = true;
-            next      = node;
+            if (cursor->right != nullptr) stack.push(cursor->right);
+            if (cursor->left != nullptr) stack.push(cursor->left);
         }
-        node = successor;
     }
-    return *this;
-}
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::const_bst_node_iterator
-bst<T, Compare, Allocator>::const_bst_node_iterator::operator++(int)
-{
-    const_bst_node_iterator tmp(*this);
-    ++*this;
-    return tmp;
-}
+    template <typename Visitor, typename... Args>
+    static void inorder_visit(BstNode* node, Visitor&& visit, Args&&... args)
+    {
+        Node* cursor = node->min();
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::const_bst_node_iterator&
-bst<T, Compare, Allocator>::const_bst_node_iterator::operator--()
-{
-    if (after_end) {
-        node      = next;
-        after_end = false;
-    } else {
-        bst_node* predecessor = subtree_pred(node);
-        if (!(predecessor || before_start)) {
-            before_start = true;
-            next         = node;
+        while (cursor->is_data() && cursor != node->parent) {
+            auto* tmp = static_cast<BstNode*>(cursor);
+            std::forward<Visitor>(visit)(tmp, std::forward<Args>(args)...);
+            cursor = cursor->successor();
         }
-        node = predecessor;
     }
-    return *this;
-}
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::const_bst_node_iterator
-bst<T, Compare, Allocator>::const_bst_node_iterator::operator--(int)
-{
-    const_bst_node_iterator tmp(*this);
-    --*this;
-    return tmp;
-}
+    template <typename Visitor, typename... Args>
+    static void postorder_visit(BstNode* node, Visitor&& visit, Args&&... args)
+    {
+        std::stack<BstNode*> stack;
 
-template <typename T, typename Compare, typename Allocator>
-bool bst<T, Compare, Allocator>::const_bst_node_iterator::operator==(
-    const const_bst_node_iterator& rhs) const
-{
-    return node == rhs.node;
-}
+        preorder_visit(
+            node,
+            [](BstNode* node, std::stack<BstNode*>& stack) {
+                stack.push(node);
+            },
+            stack);
 
-template <typename T, typename Compare, typename Allocator>
-bool bst<T, Compare, Allocator>::const_bst_node_iterator::operator!=(
-    const const_bst_node_iterator& rhs) const
-{
-    return !operator==(rhs);
-}
+        while (!stack.empty()) {
+            auto* tmp = static_cast<BstNode*>(stack.top());
+            std::forward<Visitor>(visit)(tmp, std::forward<Args>(args)...);
+            stack.pop();
+        }
+    }
 
-template <typename T, typename Compare, typename Allocator>
-bst<T, Compare, Allocator>::mutable_iterator::mutable_iterator(bst* t,
-                                                               iterator iter)
-    : t(t), iter(iter)
-{
-}
+    virtual void base_insert(BstNode* node)
+    {
+        BstNode* parent{nullptr};
+        BstNode* cursor{sentinel_->root};
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::mutable_iterator&
-bst<T, Compare, Allocator>::mutable_iterator::operator++()
-{
-    return this;
-}
+        // find where the node should be added; parent will be a leaf node
+        // and we will add the new node as one of its children
+        while (cursor != nullptr) {
+            parent = cursor;
+            if (*node < *parent) {
+                cursor = cursor->left;
+            } else {
+                cursor = cursor->right;
+            }
+        }
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::mutable_iterator&
-bst<T, Compare, Allocator>::mutable_iterator::operator++(int)
-{
-    return this;
-}
+        node->parent = parent;
 
-template <typename T, typename Compare, typename Allocator>
-typename bst<T, Compare, Allocator>::mutable_iterator&
-bst<T, Compare, Allocator>::mutable_iterator::operator=(
-    const bst::value_type& data)
-{
-    if (iter == t->end())
-        iter = t->insert(iter, data);
-    else
-        iter = t->modify(iter, data);
-    return *this;
-}
+        if (parent == nullptr) { // there is no root; update min and max as well
+            sentinel_->update_all(node);
+        } else if (*node < *parent) { // add as left child and possibly update
+                                      // min; min will always be a left child
+            parent->left = node;
+            if (sentinel_->is_min(parent)) sentinel_->update_min(node);
+        } else { // the analogous logic for right children
+            // NOTE: this will put equal, but "newer" nodes to the
+            // right of the already exisitng node
+            parent->right = node;
+            if (sentinel_->is_max(parent)) sentinel_->update_max(node);
+        }
+    }
 
-#endif
+    void transplant(BstNode* u, BstNode* v)
+    {
+        // NOTE: this method only takes care of wiring v into the position
+        // that u currently holds (whatever happens to u is up to the
+        // caller)
+
+        if (u->parent == nullptr) { // u is the root
+            sentinel_->root = v;
+        } else if (u == u->parent->left) { // u is the left child of its parent
+            // replace the subtree at u with the subtree at v
+            u->parent->left = v;
+        } else { // u is the right child of its parent
+            u->parent->right = v;
+        }
+
+        // ensure the symmetry of the child-parent relationship (i.e., the
+        // parent of v must now be the original parent of u now that v is
+        // the child of this parent)
+        if (v != nullptr) v->parent = u->parent;
+    }
+
+    virtual void single_child_or_leaf_node_erase(BstNode* node, BstNode* rep)
+    {
+        transplant(node, rep);
+    }
+
+    virtual void double_child_node_erase(BstNode* node, BstNode* rep)
+    {
+        if (rep->parent != node) {
+            transplant(rep, rep->right);
+            rep->right         = node->right;
+            rep->right->parent = rep;
+        }
+
+        transplant(node, rep);
+        rep->left         = node->left;
+        rep->left->parent = rep;
+    }
+
+    virtual void base_erase(BstNode* node)
+    {
+        if (node->left == nullptr) { // node has no left child (and perhaps
+                                     // no right child as well)
+            // NOTE: in either case we are maintaining the contract since
+            // the successor of the deleted node must be the minimum of the
+            // right subtree (if any); because there is no left subtree
+            single_child_or_leaf_node_erase(node, node->right);
+        } else if (node->right == nullptr) { // node has no right child
+            /*
+             *
+             *         |          |
+             *         A          B
+             *        /    -->   / \
+             *       B         ... ...
+             *      / \
+             *    ... ...
+             *
+             *
+             */
+            single_child_or_leaf_node_erase(node, node->left);
+        } else { // node has both a left and right child
+            double_child_node_erase(node, node->right->min());
+        }
+    }
+
+    Sentinel* sentinel_;
+
+  private:
+    template <typename Visitor, typename... Args>
+    static void data_visit(const BstNode* node, Visitor visit, Args&&... args)
+    {
+        visit(node->data, std::forward<Args>(args)...);
+    }
+};
+
+#endif // BST_H
