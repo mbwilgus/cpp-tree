@@ -20,9 +20,10 @@ class bst
     struct Sentinel;
     struct BstNode;
 
-    using NodeAllocator = typename std::allocator_traits<
-        Allocator>::template rebind_alloc<BstNode>;
-    using NodeTraits = std::allocator_traits<NodeAllocator>;
+    // trait type for allocating data type T
+    using AllocTraits = std::allocator_traits<Allocator>;
+    // trait type for allocating node type which holds T
+    using NodeAllocator = typename AllocTraits::template rebind_alloc<BstNode>;
 
     // base class for Sentinel and BstNode
     struct Node { // NOLINT
@@ -205,14 +206,12 @@ class bst
         size_t size{0};
     };
 
-    // struct FinalSentinel : public BstSentinel<NodeAllocator>;
-
     template <typename NodeAllocator>
-    struct BstSentinel : public NodeAllocator, public Sentinel { // NOLINT
+    struct BstAllocator : public NodeAllocator, public Sentinel { // NOLINT
         using NodeTraits = std::allocator_traits<NodeAllocator>;
         using NodeType   = typename NodeTraits::value_type;
 
-        ~BstSentinel()
+        ~BstAllocator()
         {
             postorder_visit(this->root, [this](BstNode* node) {
                 this->destroy_node(node);
@@ -363,9 +362,8 @@ class bst
     using reference       = const value_type&;
     using const_reference = reference;
 
-    using pointer = typename std::allocator_traits<Allocator>::pointer;
-    using const_pointer =
-        typename std::allocator_traits<Allocator>::const_pointer;
+    using pointer       = typename AllocTraits::pointer;
+    using const_pointer = typename AllocTraits::const_pointer;
 
     using const_iterator         = ConstBstNodeIterator;
     using iterator               = const_iterator;
@@ -513,14 +511,19 @@ class bst
         }
     };
 
-    template <typename NodeAllocator>
-    void set_alloc(BstSentinel<NodeAllocator>* alloc) noexcept
+    // interanal constructor used to pass the allocator
+    // all derived tree classes should call this
+    explicit bst(Sentinel* alloc)
+        : sentinel_{alloc}
     {
-        sentinel_ = alloc;
     }
 
   public:
-    bst() { set_alloc(new BstSentinel<NodeAllocator>{}); }
+    bst()
+        // call the constructor that sets the allocator
+        : bst{new BstAllocator<NodeAllocator>{}}
+    {
+    }
 
     bst(const bst& that)
         : bst{}

@@ -14,10 +14,15 @@ class balanced_bst : public bst<T, Compare, Allocator>
     using BstNode  = typename bst::BstNode;
 
   public:
-    balanced_bst()          = default;
+    balanced_bst()          = delete;
     virtual ~balanced_bst() = default;
 
   protected:
+    explicit balanced_bst(Sentinel* alloc)
+        : bst{alloc}
+    {
+    }
+
     struct BalancedBstNode : public BstNode { // NOLINT
         BalancedBstNode() = default;
 
@@ -111,11 +116,6 @@ class balanced_bst : public bst<T, Compare, Allocator>
 
     virtual void post_insert(BalancedBstNode* node) = 0;
     virtual void post_erase(BalancedBstNode* node)  = 0;
-
-    explicit balanced_bst(Sentinel* sentinel)
-        : bst{sentinel}
-    {
-    }
 };
 
 #endif // BALANCED_BST_H
