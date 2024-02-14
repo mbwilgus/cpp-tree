@@ -20,11 +20,6 @@ class bst
     struct Sentinel;
     struct BstNode;
 
-    // trait type for allocating data type T
-    using AllocTraits = std::allocator_traits<Allocator>;
-    // trait type for allocating node type which holds T
-    using NodeAllocator = typename AllocTraits::template rebind_alloc<BstNode>;
-
     // base class for Sentinel and BstNode
     struct Node { // NOLINT
         Node() = default;
@@ -351,6 +346,9 @@ class bst
     class ConstBstNodeIterator;
     class MutableIterator;
 
+    // trait type for allocating data type T
+    using AllocTraits = std::allocator_traits<Allocator>;
+
   public:
     using value_type = T;
 
@@ -511,6 +509,10 @@ class bst
         }
     };
 
+    // Allocator type for nodes which holds T
+    using NodeAllocator = typename AllocTraits::template rebind_alloc<BstNode>;
+    using BstNodeAllocator = BstAllocator<NodeAllocator>;
+
     // interanal constructor used to pass the allocator
     // all derived tree classes should call this
     explicit bst(Sentinel* alloc)
@@ -521,7 +523,7 @@ class bst
   public:
     bst()
         // call the constructor that sets the allocator
-        : bst{new BstAllocator<NodeAllocator>{}}
+        : bst{new BstNodeAllocator{}}
     {
     }
 

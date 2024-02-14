@@ -18,9 +18,6 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
     using balanced_bst = balanced_bst<T, Compare, Allocator>;
     using Sentinel     = typename bst::Sentinel;
 
-    template <typename NodeAllocator>
-    using BstAllocator = typename bst::template BstAllocator<NodeAllocator>;
-
     using BstNode         = typename bst::BstNode;
     using BalancedBstNode = typename balanced_bst::BalancedBstNode;
 
@@ -47,12 +44,16 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
         NodeColor color{red};
     };
 
+    template <typename NodeAllocator>
+    using BstAllocator = typename bst::template BstAllocator<NodeAllocator>;
+
     using NodeAllocator =
         typename AllocTraits::template rebind_alloc<RedBlackNode>;
+    using RedBlackNodeAllocator = BstAllocator<NodeAllocator>;
 
   public:
     rb_tree()
-        : balanced_bst{new BstAllocator<NodeAllocator>{}}
+        : balanced_bst{new RedBlackNodeAllocator{}}
     {
     }
 
