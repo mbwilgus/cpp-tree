@@ -127,10 +127,10 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
         static_cast<RedBlackNode*>(this->sentinel_->root)->color = black;
     }
 
-    void single_child_or_leaf_node_erase(BstNode* old, BstNode* rep) override
+    void single_child_or_leaf_node_erase(BstNode* node, BstNode* rep) override
     {
-        bst::single_child_or_leaf_node_erase(old, rep);
-        if (static_cast<RedBlackNode*>(old)->color == black) {
+        bst::single_child_or_leaf_node_erase(node, rep);
+        if (static_cast<RedBlackNode*>(node)->color == black) {
             post_erase(static_cast<RedBlackNode*>(rep));
         }
     }
@@ -153,6 +153,7 @@ class rb_tree : public balanced_bst<T, Compare, Allocator>
         if (color == black && fixme != nullptr) post_erase(fixme);
     }
 
+    // just the way it is
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     void post_erase(BalancedBstNode* fixme) override
     {
