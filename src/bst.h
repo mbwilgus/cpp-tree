@@ -94,7 +94,7 @@ class bst
     /* this class contains the root of the tree, but also acts as the
      * past-the-end node
      *
-     * actual tree nodes shall keep a reference to the Sentinel that contains
+     * nodes holding data shall keep a reference to the Sentinel that contains
      * its root so that it can be iterated to
      *
      * also it holds reference to the min and max nodes of the tree so that they
@@ -188,21 +188,31 @@ class bst
         }
 
         inline bool is_min(Node* node) { return node == this->min; }
-        inline void update_min(Node* min) { this->min = min; }
+
+        inline void update_min(Node* min)
+        {
+            if (min != nullptr) {
+                this->min = min;
+            } else {
+                min = this;
+            }
+        }
+
         inline bool is_max(Node* node) { return node == this->max; }
-        inline void update_max(Node* max) { this->max = max; }
+
+        inline void update_max(Node* max)
+        {
+            if (max != nullptr) {
+                this->max = max;
+            } else {
+                max = this;
+            }
+        }
 
         const BstNode* find(const T& data) const
             noexcept(noexcept(Compare{}(data, data)))
         {
             return this->root->find(data);
-        }
-
-        void reset() noexcept
-        {
-            root = nullptr;
-            min  = this;
-            max  = this;
         }
 
         BstNode* root{nullptr};
@@ -496,9 +506,7 @@ class bst
 
         MutableIterator& operator=(std::nullptr_t) noexcept
         {
-            const_iterator old{iter_};
-            ++iter_;
-            t_->erase(old);
+            iter_ = t_->erase(iter_);
             return *this;
         }
 
@@ -601,12 +609,14 @@ class bst
         });
     }
 
-    void insert(std::initializer_list<T> in) { insert(in.begin(), in.end()); }
+    void insert(std::initializer_list<T> init)
+    {
+        insert(init.begin(), init.end());
+    }
 
     iterator erase(const_iterator pos)
     {
-        auto*    node = static_cast<BstNode*>(pos.extract());
-        iterator next = ++pos;
+        auto* node = static_cast<BstNode*>(pos++.extract());
         base_erase(node);
 
         --sentinel_->size;
@@ -621,13 +631,13 @@ class bst
 
         sentinel_->destroy_node(node);
 
-        return next;
+        // no need to wrap in iterator constructor; all iterators are
+        // const_iterator
+        return pos;
     }
 
     iterator modify(const_iterator pos, const T& data)
     {
-        iterator iter{pos};
-
         auto not_equal = [](const T& lhs, const T& rhs) noexcept(
                              noexcept(Compare{}(data, data))) {
             return Compare{}(lhs, rhs) != Compare{}(rhs, lhs);
@@ -640,11 +650,11 @@ class bst
             node->reset();
             node->data = data;
             base_insert(node);
-
-            iter = iterator{node};
         }
 
-        return iter;
+        // no need to wrap in iterator constructor; all iterators are
+        // const_iterator
+        return pos;
     }
 
     iterator find(const T& data) const noexcept
@@ -657,6 +667,11 @@ class bst
     position position_of(const T& data) noexcept
     {
         iterator pos = find(data);
+        return position_of(pos);
+    }
+
+    inline position position_of(const_iterator pos) noexcept
+    {
         return position{this, pos};
     }
 
@@ -736,13 +751,13 @@ class bst
         }
 
         while (!stack.empty()) {
-            BstNode* cursor = stack.top();
+            BstNode* up = stack.top();
             stack.pop();
 
-            std::forward<Visitor>(visit)(cursor, std::forward<Args>(args)...);
+            std::forward<Visitor>(visit)(up, std::forward<Args>(args)...);
 
-            if (cursor->right != nullptr) stack.push(cursor->right);
-            if (cursor->left != nullptr) stack.push(cursor->left);
+            if (up->right != nullptr) stack.push(up->right);
+            if (up->left != nullptr) stack.push(up->left);
         }
     }
 
@@ -752,8 +767,8 @@ class bst
         Node* cursor = node->min();
 
         while (cursor->is_data() && cursor != node->parent) {
-            auto* tmp = static_cast<BstNode*>(cursor);
-            std::forward<Visitor>(visit)(tmp, std::forward<Args>(args)...);
+            auto* up = static_cast<BstNode*>(cursor);
+            std::forward<Visitor>(visit)(up, std::forward<Args>(args)...);
             cursor = cursor->successor();
         }
     }
@@ -771,9 +786,9 @@ class bst
             stack);
 
         while (!stack.empty()) {
-            auto* tmp = static_cast<BstNode*>(stack.top());
-            std::forward<Visitor>(visit)(tmp, std::forward<Args>(args)...);
+            BstNode* up = stack.top();
             stack.pop();
+            std::forward<Visitor>(visit)(up, std::forward<Args>(args)...);
         }
     }
 
@@ -802,8 +817,8 @@ class bst
             parent->left = node;
             if (sentinel_->is_min(parent)) sentinel_->update_min(node);
         } else { // the analogous logic for right children
-            // NOTE: this will put equal, but "newer" nodes to the
-            // right of the already exisitng node
+            // NOTE: this will put "equal", but "newer" nodes to the
+            // right of already exisitng nodes
             parent->right = node;
             if (sentinel_->is_max(parent)) sentinel_->update_max(node);
         }
@@ -878,9 +893,9 @@ class bst
 
   private:
     template <typename Visitor, typename... Args>
-    static void data_visit(const BstNode* node, Visitor visit, Args&&... args)
+    static void data_visit(const BstNode* node, Visitor&& visit, Args&&... args)
     {
-        visit(node->data, std::forward<Args>(args)...);
+        std::forward<Visitor>(visit)(node->data, std::forward<Args>(args)...);
     }
 };
 
