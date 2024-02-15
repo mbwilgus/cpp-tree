@@ -1,4 +1,4 @@
 build/
 CMakeLists.txt
+src/.cache
 src/test/
-.vimspector.json
