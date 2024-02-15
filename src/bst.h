@@ -159,11 +159,23 @@ class bst
             this->size = that->size;
         }
 
-        void clear()
+        inline void clear()
         {
             postorder_visit(this->root, [this](BstNode* node) {
                 this->destroy_node(node);
             });
+        }
+
+        inline void reset() noexcept
+        {
+            root = nullptr;
+            min  = this;
+            max  = this;
+        }
+
+        inline void clear_and_reset()
+        {
+            clear();
             reset();
             size = 0;
         }
@@ -205,13 +217,6 @@ class bst
     struct BstAllocator : public NodeAllocator, public Sentinel { // NOLINT
         using NodeTraits = std::allocator_traits<NodeAllocator>;
         using NodeType   = typename NodeTraits::value_type;
-
-        ~BstAllocator()
-        {
-            postorder_visit(this->root, [this](BstNode* node) {
-                this->destroy_node(node);
-            });
-        }
 
         BstNode* make_node(const T& data) override
         {
@@ -538,7 +543,12 @@ class bst
     {
     }
 
-    virtual ~bst() { delete sentinel_; }
+    virtual ~bst()
+    {
+        sentinel_->clear();
+        // TODO(michael): this could cause problems if Allocator has state
+        delete sentinel_;
+    }
 
     bst& operator=(const bst& that)
     {
@@ -569,7 +579,7 @@ class bst
         return sentinel_->root->height();
     }
 
-    void clear() { sentinel_->clear(); }
+    void clear() { sentinel_->clear_and_reset(); }
 
     iterator insert(const_iterator, const T& data) { return insert(data); }
 
